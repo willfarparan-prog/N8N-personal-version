@@ -56,8 +56,21 @@ def _topo_order(nodes_by_id: dict, incoming: dict, start_id: int) -> list[int]:
     return order
 
 
-def _resolve_inputs(node: dict, incoming: dict, node_outputs: dict[int, dict]) -> dict[str, Any]:
-    """Map upstream nodes' outputs onto this node's named inputs by slot index."""
+def _resolve_inputs(node: dict, incoming: dict, nodes_by_id: dict, node_outputs: dict[int, dict]) -> dict[str, Any]:
+    """
+    Map upstream nodes' outputs onto this node's named inputs.
+
+    Primary strategy: match by NAME — the origin node's declared output-slot name
+    (from its own `outputs` list in the graph JSON) is looked up directly in that
+    node's actual outputs dict. This means an executor's NodeResult.outputs key
+    order never has to match the UI's declared output-slot order, only the names
+    have to agree — far less fragile than positional binding.
+
+    Fallback: for dynamic-shaped nodes (trigger payloads, set_transform's
+    user-defined mappings) where the origin's declared output slots don't name-match
+    its actual runtime keys, fall back to positional indexing into the outputs dict
+    as a best effort.
+    """
     inputs: dict[str, Any] = {}
     input_defs = node.get("inputs") or []
     for origin_id, origin_slot, target_slot in incoming.get(node["id"], []):
@@ -65,6 +78,15 @@ def _resolve_inputs(node: dict, incoming: dict, node_outputs: dict[int, dict]) -
             continue
         input_name = input_defs[target_slot].get("name", f"input_{target_slot}")
         origin_outputs = node_outputs[origin_id]
+        origin_node = nodes_by_id.get(origin_id) or {}
+        origin_output_defs = origin_node.get("outputs") or []
+
+        if origin_slot < len(origin_output_defs):
+            origin_slot_name = origin_output_defs[origin_slot].get("name")
+            if origin_slot_name is not None and origin_slot_name in origin_outputs:
+                inputs[input_name] = origin_outputs[origin_slot_name]
+                continue
+
         origin_slot_names = list(origin_outputs.keys())
         if origin_slot < len(origin_slot_names):
             inputs[input_name] = origin_outputs[origin_slot_names[origin_slot]]
@@ -146,7 +168,7 @@ def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_
             _fail_execution(sb, execution_id, f"Unknown node type: {node_type}")
             return
 
-        inputs = _resolve_inputs(node, incoming, node_outputs)
+        inputs = _resolve_inputs(node, incoming, nodes_by_id, node_outputs)
         config = node.get("properties", {}) or {}
         log_id = _start_log(sb, execution_id, node)
         ctx = ExecutionContext(
