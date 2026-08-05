@@ -100,23 +100,30 @@ def resume_execution(
     resume_node_id: int,
     resume_outputs: dict[str, Any],
 ) -> None:
-    """Called by api/cron/poll_jobs.py once a pending_external node's job has finished."""
+    """
+    Called by api/cron/poll_jobs.py once a pending_external node's job has finished.
+
+    Rebuilds node_outputs from the persisted execution_logs (not just resume_node_id's own
+    output) so that any downstream node fed directly by an *earlier* node — not only by the
+    node that just resumed — still resolves correctly. Then re-enters _walk starting AT
+    resume_node_id itself (skipped via skip_ids) so its full forward BFS naturally covers
+    every fan-out branch, instead of only the first outgoing edge.
+    """
     sb = get_client()
     nodes_by_id, incoming = _build_graph_index(workflow_graph)
 
-    outgoing_from_resume = [
-        target_id for target_id, edges in incoming.items()
-        for origin_id, _os, _ts in edges if origin_id == resume_node_id
-    ]
-    if not outgoing_from_resume:
-        sb.table("executions").update({
-            "status": "success", "output_json": resume_outputs, "finished_at": _now(),
-        }).eq("id", execution_id).execute()
-        return
+    prior_logs = (
+        sb.table("execution_logs")
+        .select("node_id, output_json")
+        .eq("execution_id", execution_id)
+        .eq("status", "success")
+        .execute()
+    )
+    node_outputs: dict[int, dict] = {int(row["node_id"]): (row["output_json"] or {}) for row in prior_logs.data}
+    node_outputs[resume_node_id] = resume_outputs
 
     sb.table("executions").update({"status": "running"}).eq("id", execution_id).execute()
-    seed_outputs = {resume_node_id: resume_outputs}
-    _walk(sb, execution_id, nodes_by_id, incoming, outgoing_from_resume[0], secrets, seed_outputs, skip_ids={resume_node_id})
+    _walk(sb, execution_id, nodes_by_id, incoming, resume_node_id, secrets, node_outputs, skip_ids={resume_node_id})
 
 
 def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_outputs, skip_ids: Optional[set[int]] = None):
