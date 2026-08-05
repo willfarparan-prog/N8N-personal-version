@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowForge - Execution Detail</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* Status badge colors */
+        .badge-success { background-color: #10b981; color: #fff; }
+        .badge-failed { background-color: #ef4444; color: #fff; }
+        .badge-pending, .badge-running, .badge-pending_external { background-color: #f59e0b; color: #000; }
+        .badge-skipped { background-color: #6b7280; color: #fff; }
+
+        /* Error block */
+        .error-block {
+            background-color: #2a1a1a;
+            border: 1px solid #ef4444;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            color: #fca5a5;
+        }
+
+        /* Log timeline */
+        .log-timeline {
+            margin-top: 2rem;
+            border-left: 2px solid #2a2a2a;
+            padding-left: 1.5rem;
+            margin-left: 0.5rem;
+        }
+
+        .log-entry {
+            background-color: #1a1a1a;
+            border: 1px solid #2a2a2a;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .log-entry::before {
+            content: '';
+            position: absolute;
+            left: -1.6rem;
+            top: 1.5rem;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #4b5563;
+        }
+
+        .log-entry h3 {
+            margin: 0 0 0.5rem 0;
+            color: #eee;
+            font-size: 1.1rem;
+        }
+
+        .log-meta {
+            font-size: 0.875rem;
+            color: #888;
+            margin: 0.5rem 0;
+        }
+
+        /* Output JSON pre */
+        .output-pre {
+            background-color: #111;
+            border: 1px solid #333;
+            border-radius: 0.25rem;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            max-height: 300px;
+            overflow: auto;
+            font-size: 0.875rem;
+            color: #ccc;
+        }
+
+        /* Auto-refresh indicator */
+        .auto-refresh-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #10b981;
+            margin-left: 1rem;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #10b981;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <a href="/index.html" class="btn btn-secondary">← Back to Dashboard</a>
+        <h1>Execution Detail</h1>
+        <span id="refresh-indicator" style="display:none;" class="auto-refresh-indicator">
+            <span class="pulse-dot"></span>
+            <span>Live — auto-refreshing</span>
+        </span>
+    </div>
+
+    <div id="app"></div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        let currentData = null;
+        let pollInterval = null;
+
+        function statusBadgeClass(status) {
+            const map = {
+                'success': 'badge-success',
+                'failed': 'badge-failed',
+                'pending': 'badge-pending',
+                'running': 'badge-running',
+                'pending_external': 'badge-pending_external',
+                'skipped': 'badge-skipped'
+            };
+            return map[status] || '';
+        }
+
+        function formatDateTime(isoString) {
+            if (!isoString) return '—';
+            return new Date(isoString).toLocaleString();
+        }
+
+        function render(data) {
+            const app = document.getElementById('app');
+            if (!app) return;
+
+            const exec = data.execution;
+            const logs = data.logs || [];
+
+            const shouldPoll = ['pending', 'running', 'pending_external'].includes(exec.status);
+            const indicator = document.getElementById('refresh-indicator');
+            if (indicator) {
+                indicator.style.display = shouldPoll ? 'inline-flex' : 'none';
+            }
+
+            // Stop polling if finished
+            if (!shouldPoll && pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            let html = `
+                <div class="card" style="margin-bottom: 2rem;">
+                    <h2 style="margin-top: 0;">Execution ${escapeHtml(exec.id)}</h2>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                        <span class="badge ${statusBadgeClass(exec.status)}">${escapeHtml(exec.status)}</span>
+                        <span>Trigger: ${escapeHtml(exec.trigger_type)}</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: auto auto; gap: 0.5rem 2rem;">
+                        <div><strong>Started:</strong></div>
+                        <div>${formatDateTime(exec.started_at)}</div>
+                        <div><strong>Finished:</strong></div>
+                        <div>${exec.finished_at ? formatDateTime(exec.finished_at) : 'In progress'}</div>
+                    </div>
+            `;
+
+            if (exec.error) {
+                html += `
+                    <div class="error-block" style="margin-top: 1rem;">
+                        <strong>Execution Error:</strong><br>
+                        ${escapeHtml(exec.error)}
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+
+            // Logs timeline
+            if (logs.length > 0) {
+                html += `<h2>Node Logs</h2><div class="log-timeline">`;
+
+                logs.forEach(log => {
+                    html += `
+                        <div class="log-entry">
+                            <h3>${escapeHtml(log.node_type)} (${escapeHtml(log.node_id)})</h3>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
+                                <span class="badge ${statusBadgeClass(log.status)}">${escapeHtml(log.status)}</span>
+                            </div>
+                            <div class="log-meta">
+                                <div><strong>Started:</strong> ${formatDateTime(log.started_at)}</div>
+                                <div><strong>Finished:</strong> ${log.finished_at ? formatDateTime(log.finished_at) : 'In progress'}</div>
+                            </div>
+                    `;
+
+                    if (log.error) {
+                        html += `
+                            <div class="error-block">
+                                <strong>Node Error:</strong><br>
+                                ${escapeHtml(log.error)}
+                            </div>
+                        `;
+                    }
+
+                    if (log.output_json) {
+                        html += `
+                            <div style="margin-top: 0.5rem;">
+                                <strong>Output:</strong>
+                                <pre class="output-pre">${escapeHtml(JSON.stringify(log.output_json, null, 2))}</pre>
+                            </div>
+                        `;
+                    } else {
+                        html += `<div style="margin-top: 0.5rem;"><strong>Output:</strong> No output</div>`;
+                    }
+
+                    html += `</div>`;
+                });
+
+                html += `</div>`;
+            } else {
+                html += `<div class="card">No logs available for this execution.</div>`;
+            }
+
+            app.innerHTML = html;
+            currentData = data;
+        }
+
+        async function fetchAndRender(id) {
+            try {
+                const data = await apiFetch(`/api/executions/${id}`);
+                render(data);
+            } catch (error) {
+                const app = document.getElementById('app');
+                if (app) {
+                    app.innerHTML = `
+                        <div class="card" style="border-color: #ef4444;">
+                            <h2 style="color: #ef4444;">Error Loading Execution</h2>
+                            <p>${escapeHtml(error.message)}</p>
+                            <button onclick="window.location.reload()" class="btn btn-secondary">Retry</button>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        async function init() {
+            try {
+                await requireAuth();
+
+                const params = new URLSearchParams(window.location.search);
+                const id = params.get('id');
+
+                if (!id) {
+                    const app = document.getElementById('app');
+                    if (app) {
+                        app.innerHTML = `
+                            <div class="card" style="border-color: #f59e0b;">
+                                <h2 style="color: #f59e0b;">Missing Execution ID</h2>
+                                <p>No execution id provided in URL.</p>
+                                <a href="/index.html" class="btn btn-primary">Go to Dashboard</a>
+                            </div>
+                        `;
+                    }
+                    return;
+                }
+
+                await fetchAndRender(id);
+
+                // Set up polling if needed
+                if (currentData && ['pending', 'running', 'pending_external'].includes(currentData.execution.status)) {
+                    if (!pollInterval) {
+                        pollInterval = setInterval(() => fetchAndRender(id), 3000);
+                    }
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                const app = document.getElementById('app');
+                if (app) {
+                    app.innerHTML = `
+                        <div class="card" style="border-color: #ef4444;">
+                            <h2 style="color: #ef4444;">Initialization Error</h2>
+                            <p>${escapeHtml(error.message)}</p>
+                            <button onclick="window.location.reload()" class="btn btn-secondary">Retry</button>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Start initialization
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>

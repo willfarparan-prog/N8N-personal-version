@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowForge Login</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <main class="center-screen">
+        <div class="card auth-card">
+            <h1 class="auth-title">FlowForge</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Log In</button>
+                <div id="error" class="error-message"></div>
+            </form>
+        </div>
+    </main>
+    <script src="js/app.js"></script>
+    <script>
+        // If already authenticated, skip straight to the app.
+        fetch("/api/session", { credentials: "include" })
+            .then(r => r.json())
+            .then(data => {
+                if (data.authed) {
+                    window.location.href = "/index.html";
+                }
+            })
+            .catch(() => {});
+
+        const form = document.getElementById("login-form");
+        const passwordInput = document.getElementById("password");
+        const errorDiv = document.getElementById("error");
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            errorDiv.textContent = "";
+
+            try {
+                const response = await fetch("/api/auth/login", {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ password: passwordInput.value })
+                });
+                const data = await response.json();
+
+                if (response.ok && data.ok) {
+                    window.location.href = "/index.html";
+                } else {
+                    errorDiv.textContent = data.error || "Login failed";
+                    passwordInput.value = "";
+                }
+            } catch (err) {
+                errorDiv.textContent = "Network error. Please try again.";
+                passwordInput.value = "";
+            }
+        });
+    </script>
+</body>
+</html>

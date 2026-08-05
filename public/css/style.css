@@ -1,0 +1,185 @@
+:root {
+    --background: #111318;
+    --surface: #1a1d24;
+    --surface-light: #262a34;
+    --border: #3a4050;
+    --text: #e8eaed;
+    --text-muted: #a0a5b0;
+    --accent: #8a5cf5;
+    --accent-hover: #9a6cff;
+    --success: #10b981;
+    --danger: #ef4444;
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.5rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    --radius: 0.5rem;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    height: 100%;
+    background-color: var(--background);
+    color: var(--text);
+    font-family: var(--font-family);
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s;
+    outline: none;
+    white-space: nowrap;
+    background-color: var(--surface);
+    color: var(--text);
+}
+.btn:hover {
+    background-color: var(--surface-light);
+    box-shadow: var(--shadow);
+}
+.btn-primary {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+.btn-primary:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+.btn-secondary {
+    background-color: transparent;
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.btn-secondary:hover {
+    background-color: rgba(138, 92, 245, 0.1);
+}
+.btn-block {
+    width: 100%;
+}
+
+input, textarea, select {
+    background-color: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-family: inherit;
+    font-size: inherit;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.2s;
+}
+input:focus, textarea:focus, select:focus {
+    border-color: var(--accent);
+}
+label {
+    display: block;
+    margin-bottom: var(--spacing-xs);
+    font-weight: 500;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+.form-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md) var(--spacing-xl);
+    background-color: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+.toolbar .logo {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+.toolbar-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.card {
+    background-color: var(--surface);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow);
+}
+.list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border);
+    transition: background-color 0.2s;
+}
+.list-item:last-child {
+    border-bottom: none;
+}
+.list-item:hover {
+    background-color: var(--surface-light);
+}
+.badge {
+    display: inline-block;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background-color: var(--accent);
+    color: white;
+}
+
+.center-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--spacing-xl);
+}
+.auth-card {
+    width: 100%;
+    max-width: 360px;
+}
+.auth-title {
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+    color: var(--accent);
+}
+.error-message {
+    margin-top: var(--spacing-md);
+    color: var(--danger);
+    font-size: 0.875rem;
+    text-align: center;
+    min-height: 1.25rem;
+}

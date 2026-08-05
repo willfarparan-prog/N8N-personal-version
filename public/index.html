@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowForge - Dashboard</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        /* Dashboard-specific styles */
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .error-banner {
+            background-color: #5c2b29;
+            color: #f8b6b6;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error-banner.show {
+            display: block;
+        }
+
+        .workflows-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .workflows-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .workflows-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .workflow-card {
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            transition: transform 0.2s;
+        }
+
+        .workflow-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .workflow-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .workflow-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-right: 12px;
+            word-break: break-word;
+        }
+
+        .workflow-meta {
+            color: #a0a0a0;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        .workflow-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: auto;
+        }
+
+        .badge-active {
+            background-color: #164a2e;
+            color: #6ee7b7;
+        }
+
+        .badge-inactive {
+            background-color: #5c2b29;
+            color: #f8b6b6;
+        }
+
+        .badge-success {
+            background-color: #164a2e;
+            color: #6ee7b7;
+        }
+
+        .badge-failed {
+            background-color: #5c2b29;
+            color: #f8b6b6;
+        }
+
+        .badge-pending,
+        .badge-pending_external {
+            background-color: #5c4d29;
+            color: #f8d96b;
+        }
+
+        .execution-result {
+            margin-top: 12px;
+            padding: 8px 12px;
+            background-color: #2d3748;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .execution-result.show {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .execution-result a {
+            color: #63b3ed;
+            text-decoration: none;
+        }
+
+        .execution-result a:hover {
+            text-decoration: underline;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+            margin-right: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #a0a0a0;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 12px;
+            color: #fff;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <div class="toolbar-left">
+            <h1>FlowForge</h1>
+        </div>
+        <div class="toolbar-right">
+            <button id="newWorkflowBtn" class="btn btn-primary">+ New Workflow</button>
+            <button id="logoutBtn" class="btn btn-secondary">Log out</button>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <div id="errorBanner" class="error-banner"></div>
+        
+        <div class="workflows-header">
+            <h2 class="workflows-title">Workflows</h2>
+        </div>
+
+        <div id="workflowsContainer" class="workflows-grid">
+            <!-- Workflow cards will be inserted here -->
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        // Global state
+        let workflows = [];
+
+        // DOM elements
+        let workflowsContainer;
+        let errorBanner;
+        let newWorkflowBtn;
+        let logoutBtn;
+
+        // Initialize the dashboard
+        async function init() {
+            try {
+                // Ensure user is authenticated
+                await requireAuth();
+                
+                // Get DOM elements
+                workflowsContainer = document.getElementById('workflowsContainer');
+                errorBanner = document.getElementById('errorBanner');
+                newWorkflowBtn = document.getElementById('newWorkflowBtn');
+                logoutBtn = document.getElementById('logoutBtn');
+                
+                // Set up event listeners
+                newWorkflowBtn.addEventListener('click', handleNewWorkflow);
+                logoutBtn.addEventListener('click', handleLogout);
+                
+                // Load workflows
+                await loadWorkflows();
+                
+            } catch (error) {
+                showError('Failed to initialize dashboard: ' + error.message);
+            }
+        }
+
+        // Load workflows from API
+        async function loadWorkflows() {
+            try {
+                const response = await apiFetch('/api/workflows');
+                
+                if (response.error) {
+                    showError(response.error);
+                    return;
+                }
+                
+                workflows = response.workflows || [];
+                renderWorkflows();
+                
+            } catch (error) {
+                showError('Failed to load workflows: ' + error.message);
+            }
+        }
+
+        // Render workflow list
+        function renderWorkflows() {
+            workflowsContainer.innerHTML = '';
+            
+            if (workflows.length === 0) {
+                workflowsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No workflows yet</h3>
+                        <p>Create a workflow to get started with automation</p>
+                        <button id="createFirstWorkflowBtn" class="btn btn-primary" style="margin-top: 16px;">
+                            + Create Your First Workflow
+                        </button>
+                    </div>
+                `;
+                
+                // Add event listener to the empty state button
+                const createFirstBtn = document.getElementById('createFirstWorkflowBtn');
+                if (createFirstBtn) {
+                    createFirstBtn.addEventListener('click', handleNewWorkflow);
+                }
+                return;
+            }
+            
+            // Create workflow cards
+            workflows.forEach(workflow => {
+                const card = createWorkflowCard(workflow);
+                workflowsContainer.appendChild(card);
+            });
+        }
+
+        // Create a workflow card element
+        function createWorkflowCard(workflow) {
+            const card = document.createElement('div');
+            card.className = 'card list-item workflow-card';
+            card.dataset.workflowId = workflow.id;
+            
+            const badgeClass = workflow.is_active ? 'badge-active' : 'badge-inactive';
+            const badgeText = workflow.is_active ? 'Active' : 'Inactive';
+            const toggleText = workflow.is_active ? 'Deactivate' : 'Activate';
+            const updatedAt = new Date(workflow.updated_at).toLocaleString();
+            
+            card.innerHTML = `
+                <div class="workflow-header">
+                    <div class="workflow-name">${escapeHtml(workflow.name)}</div>
+                    <span class="badge ${badgeClass}">${badgeText}</span>
+                </div>
+                <div class="workflow-meta">
+                    Updated: ${updatedAt}
+                </div>
+                <div class="workflow-actions">
+                    <button class="btn btn-small open-btn" data-action="open">Open</button>
+                    <button class="btn btn-small run-btn" data-action="run">Run Now</button>
+                    <button class="btn btn-small toggle-btn" data-action="toggle">${toggleText}</button>
+                    <button class="btn btn-small delete-btn" data-action="delete">Delete</button>
+                </div>
+                <div class="execution-result" id="execution-${workflow.id}"></div>
+            `;
+            
+            // Add event listeners for action buttons
+            const openBtn = card.querySelector('.open-btn');
+            const runBtn = card.querySelector('.run-btn');
+            const toggleBtn = card.querySelector('.toggle-btn');
+            const deleteBtn = card.querySelector('.delete-btn');
+            
+            openBtn.addEventListener('click', () => openWorkflow(workflow.id));
+            runBtn.addEventListener('click', () => runWorkflow(workflow.id, runBtn));
+            toggleBtn.addEventListener('click', () => toggleWorkflow(workflow.id, toggleBtn));
+            deleteBtn.addEventListener('click', () => deleteWorkflow(workflow.id, card));
+            
+            return card;
+        }
+
+        // Open workflow editor
+        function openWorkflow(workflowId) {
+            window.location.href = `/workflow.html?id=${workflowId}`;
+        }
+
+        // Run a workflow
+        async function runWorkflow(workflowId, button) {
+            const originalText = button.textContent;
+            button.innerHTML = '<span class="spinner"></span>Running...';
+            button.disabled = true;
+            
+            try {
+                const response = await apiFetch(`/api/workflows/${workflowId}/run`, {
+                    method: 'POST'
+                });
+                
+                if (response.error) {
+                    showError(`Run failed: ${response.error}`);
+                    return;
+                }
+                
+                // Show execution result
+                const execution = response.execution;
+                const resultEl = document.getElementById(`execution-${workflowId}`);
+                const statusClass = `badge-${execution.status}`;
+                
+                resultEl.innerHTML = `
+                    <span class="badge ${statusClass}">${execution.status}</span>
+                    <a href="/execution.html?id=${execution.id}">View Execution</a>
+                `;
+                resultEl.classList.add('show');
+                
+            } catch (error) {
+                showError('Failed to run workflow: ' + error.message);
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Toggle workflow active state
+        async function toggleWorkflow(workflowId, button) {
+            try {
+                const workflow = workflows.find(w => w.id === workflowId);
+                if (!workflow) return;
+                
+                const response = await apiFetch(`/api/workflows/${workflowId}`, {
+                    method: 'PUT',
+                    body: { is_active: !workflow.is_active }
+                });
+                
+                if (response.error) {
+                    showError(response.error);
+                    return;
+                }
+                
+                // Update workflow in array
+                const index = workflows.findIndex(w => w.id === workflowId);
+                if (index !== -1) {
+                    workflows[index] = response.workflow;
+                }
+                
+                // Update UI
+                const card = document.querySelector(`[data-workflow-id="${workflowId}"]`);
+                if (card) {
+                    const badge = card.querySelector('.badge');
+                    const toggleBtn = card.querySelector('.toggle-btn');
+                    
+                    if (response.workflow.is_active) {
+                        badge.className = 'badge badge-active';
+                        badge.textContent = 'Active';
+                        toggleBtn.textContent = 'Deactivate';
+                    } else {
+                        badge.className = 'badge badge-inactive';
+                        badge.textContent = 'Inactive';
+                        toggleBtn.textContent = 'Activate';
+                    }
+                }
+                
+            } catch (error) {
+                showError('Failed to update workflow: ' + error.message);
+            }
+        }
+
+        // Delete a workflow
+        async function deleteWorkflow(workflowId, card) {
+            if (!window.confirm('Delete this workflow?')) {
+                return;
+            }
+            
+            try {
+                const response = await apiFetch(`/api/workflows/${workflowId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.error) {
+                    showError(response.error);
+                    return;
+                }
+                
+                // Remove from array
+                workflows = workflows.filter(w => w.id !== workflowId);
+                
+                // Remove from DOM
+                card.remove();
+                
+                // Re-render if empty
+                if (workflows.length === 0) {
+                    renderWorkflows();
+                }
+                
+            } catch (error) {
+                showError('Failed to delete workflow: ' + error.message);
+            }
+        }
+
+        // Create new workflow
+        async function handleNewWorkflow() {
+            const name = window.prompt('Workflow name:');
+            
+            if (!name || name.trim() === '') {
+                return;
+            }
+            
+            try {
+                const response = await apiFetch('/api/workflows', {
+                    method: 'POST',
+                    body: { name: name.trim() }
+                });
+                
+                if (response.error) {
+                    showError(response.error);
+                    return;
+                }
+                
+                // Redirect to editor
+                window.location.href = `/workflow.html?id=${response.workflow.id}`;
+                
+            } catch (error) {
+                showError('Failed to create workflow: ' + error.message);
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                await apiFetch('/api/auth/logout', { method: 'POST' });
+                window.location.href = '/login.html';
+            } catch (error) {
+                showError('Failed to log out: ' + error.message);
+            }
+        }
+
+        // Show error banner
+        function showError(message) {
+            errorBanner.textContent = message;
+            errorBanner.classList.add('show');
+            
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                errorBanner.classList.remove('show');
+            }, 10000);
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
