@@ -29,6 +29,7 @@
     { "src": "/api/cron/poll_schedules", "dest": "/api/cron/poll_schedules.py" },
     { "src": "/api/cron/poll_jobs", "dest": "/api/cron/poll_jobs.py" },
     { "src": "/", "dest": "/public/index.html" },
+    { "src": "/integrations.html", "dest": "/public/integrations.html" },
     { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
