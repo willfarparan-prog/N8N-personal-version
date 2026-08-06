@@ -19,6 +19,7 @@ _MODULES = [
     "delay",
     "condition",
     "set_transform",
+    "google_drive",
 ]
 
 for _name in _MODULES:

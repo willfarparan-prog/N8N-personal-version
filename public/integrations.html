@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integrations — FlowForge</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .integrations-hero { max-width: 44rem; margin-bottom: var(--space-7); }
+  .integrations-hero h1 { margin: var(--space-2) 0 var(--space-3); font-size: clamp(2.25rem, 5vw, 3.8rem); letter-spacing: -.055em; line-height: 1.03; }
+  .integrations-hero p { color: var(--text-dim); font-size: var(--text-base); }
+  .integration-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, .55fr); gap: var(--space-5); align-items: stretch; }
+  .integration-card { position: relative; overflow: hidden; padding: clamp(1.25rem, 3vw, 2rem); }
+  .integration-card::after { content: ""; position: absolute; width: 320px; height: 320px; right: -180px; top: -180px; border-radius: 50%; background: radial-gradient(circle, rgba(103,213,255,.2), transparent 68%); pointer-events: none; }
+  .integration-card > * { position: relative; }
+  .integration-head { display: flex; gap: var(--space-3); align-items: center; margin-bottom: var(--space-5); }
+  .google-mark { display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid rgba(103,213,255,.4); border-radius: 15px; background: linear-gradient(135deg, rgba(103,213,255,.22), rgba(167,112,255,.16)); color: #8fddff; font-size: 1.3rem; box-shadow: inset 0 1px rgba(255,255,255,.1); }
+  .integration-head h2 { font-size: var(--text-lg); }
+  .integration-head p { color: var(--text-faint); font-size: var(--text-xs); }
+  .scope-list { display: grid; gap: var(--space-2); margin: var(--space-5) 0; }
+  .scope-list div { display: flex; gap: var(--space-2); align-items: flex-start; color: var(--text-dim); font-size: var(--text-sm); }
+  .scope-list span { color: #78ead4; }
+  .connection-status { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: rgba(8,5,14,.18); color: var(--text-dim); font-size: var(--text-sm); }
+  .connection-status strong { color: var(--text); }
+  .setup-card { color: var(--text-dim); }
+  .setup-card h3 { color: var(--text); margin-bottom: var(--space-2); }
+  .setup-card ol { padding-left: 1.15rem; display: grid; gap: var(--space-2); font-size: var(--text-sm); }
+  .notice { margin-bottom: var(--space-5); padding: var(--space-3); border: 1px solid rgba(255,192,105,.35); border-radius: var(--radius-sm); background: rgba(255,192,105,.09); color: #f6d49d; font-size: var(--text-sm); }
+  .notice[hidden] { display: none; }
+  @media (max-width: 760px) { .integration-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="/index.html" class="btn btn-ghost btn-sm">← Workflows</a>
+    <div class="toolbar-spacer"></div>
+    <span class="badge badge-active">Personal workspace</span>
+  </div>
+  <main class="page">
+    <section class="integrations-hero">
+      <div class="eyebrow">Connected tools</div>
+      <h1>Bring the right work into the graph.</h1>
+      <p>Connections live server-side. Your graph gets useful actions without exposing provider credentials, access tokens, or the rest of your workspace.</p>
+    </section>
+    <div id="notice" class="notice" hidden role="status"></div>
+    <section class="integration-grid">
+      <article class="card integration-card">
+        <div class="integration-head"><div class="google-mark" aria-hidden="true">◇</div><div><h2>Google Drive</h2><p>Assets and folders for your creative workflows</p></div></div>
+        <div class="connection-status" id="google-status"><strong>Checking connection…</strong></div>
+        <div class="scope-list">
+          <div><span>✓</span><span>Upload generated images or text outputs.</span></div>
+          <div><span>✓</span><span>Create organized destination folders.</span></div>
+          <div><span>✓</span><span>Search only files FlowForge is authorized to use.</span></div>
+        </div>
+        <div id="google-actions"></div>
+      </article>
+      <aside class="card setup-card">
+        <div class="eyebrow">Drive-first</div>
+        <h3>How this connection is scoped</h3>
+        <ol>
+          <li>FlowForge uses Google’s authorization-code flow on the server.</li>
+          <li>It requests per-file Drive access, not unrestricted Drive access.</li>
+          <li>Refresh tokens are encrypted before they are saved.</li>
+          <li>Use the new Google nodes in the editor once connected.</li>
+        </ol>
+      </aside>
+    </section>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    const notice = document.getElementById('notice');
+    const status = document.getElementById('google-status');
+    const actions = document.getElementById('google-actions');
+    const message = new URLSearchParams(location.search).get('message');
+    const googleResult = new URLSearchParams(location.search).get('google');
+    if (message) { notice.hidden = false; notice.textContent = message; }
+    if (googleResult === 'connected') { notice.hidden = false; notice.textContent = 'Google Drive is connected and ready for your workflow nodes.'; }
+
+    function renderGoogle(google) {
+      if (google.connected) {
+        status.innerHTML = '<strong>Google Drive is connected.</strong><br>Drive nodes can now create folders, search authorized files, and upload workflow output.';
+        actions.innerHTML = '<button class="btn btn-danger" id="disconnect-google">Disconnect Google</button>';
+        document.getElementById('disconnect-google').addEventListener('click', disconnectGoogle);
+      } else if (google.configured) {
+        status.innerHTML = '<strong>Ready to connect Google Drive.</strong><br>Choose an account and approve the narrowly scoped Drive access.';
+        actions.innerHTML = '<a class="btn btn-primary" href="/api/integrations/google/authorize">Connect Google Drive</a>';
+      } else {
+        status.innerHTML = '<strong>Google OAuth needs one-time setup.</strong><br>Add the Google OAuth values in Vercel, then return here to connect your account.';
+        actions.innerHTML = '<button class="btn" disabled>Setup required</button>';
+      }
+    }
+
+    async function disconnectGoogle() {
+      const button = document.getElementById('disconnect-google');
+      button.disabled = true;
+      try {
+        const response = await apiFetch('/api/integrations/google', { method: 'DELETE' });
+        if (response.error) throw new Error(response.error);
+        await loadGoogle();
+      } catch (error) {
+        notice.hidden = false;
+        notice.textContent = error.message || 'Could not disconnect Google.';
+      }
+    }
+
+    async function loadGoogle() {
+      try {
+        const response = await apiFetch('/api/integrations/google');
+        if (response.error) throw new Error(response.error);
+        renderGoogle(response.google);
+      } catch (error) {
+        status.innerHTML = '<strong>Google connection status is unavailable.</strong><br>Please refresh and try again.';
+      }
+    }
+
+    requireAuth().then(loadGoogle).catch(() => {});
+  </script>
+</body>
+</html>
