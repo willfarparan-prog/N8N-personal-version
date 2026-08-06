@@ -16,6 +16,17 @@ A self-hosted, n8n-style visual workflow builder — no subscription. Runs on Ve
 Triggers: Manual Run, Webhook, Schedule.
 Actions: HTTP Request, Supabase Insert/Query, fal.ai Generate Image, fal.ai Train LoRA (async, polled), LLM Prompt (OpenRouter), Delay, Condition, Set/Transform.
 
+## Creative graph studio and Capsules
+
+The workflow editor is a creative graph studio: the node library includes a starter
+image-concept recipe, related nodes can be framed into saved visual stages, and each
+node setting can be exposed deliberately. The **Capsule** inspector turns those
+exposed controls into a focused operator page at `/capsule.html?id=<workflow-id>`.
+
+Running a Capsule applies its fields as **one-run overrides**. It never changes the
+saved graph, and the API accepts overrides only for controls that were exposed by the
+designer in that graph's Capsule configuration.
+
 ## Environment variables (set in Vercel project settings)
 
 - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` — service-role key, server-side only, bypasses RLS.

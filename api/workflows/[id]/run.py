@@ -3,6 +3,7 @@ Manually trigger workflow execution.
 Route:
 - POST /api/workflows/{id}/run: manually execute workflow
 """
+import copy
 import http.server
 
 from api._lib.auth import is_authed
@@ -42,6 +43,32 @@ class handler(http.server.BaseHTTPRequestHandler):
             return
 
         body = read_json_body(self)
+        workflow_graph = copy.deepcopy(workflow["graph_json"])
+
+        # Capsules submit a small, whitelisted set of per-run control changes.
+        # They never mutate the saved graph: an operator can vary a prompt or
+        # model setting without changing the designer's reusable workflow.
+        overrides = body.get("_flowforge_overrides", {}) if isinstance(body, dict) else {}
+        if isinstance(overrides, dict):
+            nodes_by_id = {str(node.get("id")): node for node in workflow_graph.get("nodes", [])}
+            capsule_controls = (workflow_graph.get("flowforge", {}) or {}).get("capsule", {}).get("controls", [])
+            allowed_controls = {
+                (str(control.get("nodeId")), control.get("key"))
+                for control in capsule_controls
+                if isinstance(control, dict)
+            }
+            for node_id, property_overrides in overrides.items():
+                node = nodes_by_id.get(str(node_id))
+                if node is None or not isinstance(property_overrides, dict):
+                    continue
+                properties = node.get("properties") or {}
+                for key, value in property_overrides.items():
+                    # A capsule may only override an existing node property.
+                    # This avoids turning the operator interface into an
+                    # arbitrary graph-editing surface.
+                    if (str(node_id), key) in allowed_controls and key in properties:
+                        properties[key] = value
+                node["properties"] = properties
 
         # Create execution record
         try:
@@ -60,7 +87,7 @@ class handler(http.server.BaseHTTPRequestHandler):
             return
 
         # Find trigger node
-        nodes = workflow["graph_json"].get("nodes", [])
+        nodes = workflow_graph.get("nodes", [])
         trigger_node = next(
             (node for node in nodes if node.get("type", "").startswith("trigger/")),
             None,
@@ -84,7 +111,7 @@ class handler(http.server.BaseHTTPRequestHandler):
         try:
             run_execution(
                 execution_id=execution_id,
-                workflow_graph=workflow["graph_json"],
+                workflow_graph=workflow_graph,
                 secrets=get_node_secrets(),
                 seed_outputs={trigger_node_id: body},
             )
