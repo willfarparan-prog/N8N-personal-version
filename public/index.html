@@ -9,25 +9,34 @@
         /* Page-specific styles */
         .workflow-count {
             color: var(--text-dim);
-            font-size: var(--text-sm);
+            font-size: var(--text-xs);
+            font-variant-numeric: tabular-nums;
         }
+
+        .workspace-intro { margin-bottom: 2.75rem; }
+        .workspace-intro h1 { font-size: clamp(2.25rem, 5vw, 3.75rem); letter-spacing: -0.055em; line-height: 1.04; margin: var(--space-2) 0 var(--space-3); }
+        .workspace-intro p { max-width: 38rem; color: var(--text-dim); }
+        .workspace-overview { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-3); }
+        .workspace-overview h2 { font-size: var(--text-lg); }
 
         .workflow-list {
             display: flex;
             flex-direction: column;
-            gap: var(--space-3);
+            gap: var(--space-2);
         }
 
         .workflow-row {
             display: flex;
             align-items: center;
             gap: var(--space-5);
-            padding: var(--space-4) var(--space-5);
-            transition: background 0.15s, border-color 0.15s;
+            padding: 1.25rem 1.5rem;
+            transition: background 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
         }
         .workflow-row:hover {
-            background: var(--surface-2);
+            background: linear-gradient(145deg, rgba(43,44,53,.96), rgba(26,27,33,.96));
             border-color: var(--border-strong);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow);
         }
 
         .workflow-row .card-left {
@@ -58,6 +67,12 @@
             color: var(--text-dim);
             font-size: var(--text-sm);
         }
+        .workflow-kicker { color: var(--text-faint); font-size: var(--text-xs); margin-bottom: var(--space-1); }
+        .workflow-stat { display: inline-flex; align-items: center; gap: .35rem; margin-top: var(--space-2); color: var(--text-faint); font-size: var(--text-xs); }
+        .workflow-stat::before { content: ""; width: 5px; height: 5px; border-radius: 99px; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .icon-button { width: 34px; padding: 0; aspect-ratio: 1; font-size: 1.1rem; }
+        .empty-state { padding: 5.5rem var(--space-5); border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 46%); }
+        .empty-orb { width: 52px; height: 52px; margin: 0 auto var(--space-4); border-radius: 18px; background: conic-gradient(from 215deg, #7d70ff, #afa1ff, #5ee6d1, #7d70ff); box-shadow: 0 12px 30px rgba(126,112,255,.24); }
 
         .result-strip {
             display: none;
@@ -92,21 +107,45 @@
             <span class="brand-mark"></span>
             FlowForge
         </div>
+        <span class="badge badge-active">Personal workspace</span>
         <div class="toolbar-spacer"></div>
-        <button id="newWorkflowBtn" class="btn btn-primary">New workflow</button>
-        <button id="logoutBtn" class="btn btn-ghost">Log out</button>
+        <button id="newWorkflowBtn" class="btn btn-primary">Create workflow</button>
+        <button id="logoutBtn" class="btn btn-ghost" aria-label="Log out">Log out</button>
     </div>
 
     <div class="page">
-        <div class="page-header">
-            <h1>Workflows</h1>
-            <div class="toolbar-spacer"></div>
+        <section class="workspace-intro">
+            <div class="eyebrow">Workflow studio</div>
+            <h1>Make the work flow.</h1>
+            <p>Build calm, reliable automations for image generation, training, and everything that follows.</p>
+        </section>
+
+        <div class="workspace-overview">
+            <h2>Your workflows</h2>
             <div id="workflowCount" class="workflow-count" hidden></div>
         </div>
 
         <div id="errorBanner" class="banner" hidden></div>
 
         <div id="workflowList"></div>
+    </div>
+
+    <div class="modal-backdrop" id="workflowModal" hidden aria-hidden="true">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="workflowModalTitle">
+            <div class="eyebrow">New workflow</div>
+            <h2 id="workflowModalTitle">Name your workflow</h2>
+            <p>Give it a clear name. You can change it any time in the editor.</p>
+            <form id="workflowForm">
+                <div class="field">
+                    <label for="workflowName">Workflow name</label>
+                    <input type="text" id="workflowName" maxlength="120" placeholder="e.g. Product image studio" autocomplete="off" required>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" id="cancelWorkflowBtn" class="btn btn-ghost">Cancel</button>
+                    <button type="submit" id="createWorkflowBtn" class="btn btn-primary">Create workflow</button>
+                </div>
+            </form>
+        </section>
     </div>
 
     <script src="/js/app.js"></script>
@@ -121,13 +160,18 @@
         let workflowCount;
         let errorBanner;
         let workflowList;
+        let workflowModal;
+        let workflowForm;
+        let workflowName;
+        let cancelWorkflowBtn;
+        let createWorkflowBtn;
 
         // Initialize the page
         async function init() {
+            cacheElements();
+            attachListeners();
             try {
                 await requireAuth();
-                cacheElements();
-                attachListeners();
                 await loadWorkflows();
             } catch (err) {
                 showError(err.message || 'Failed to initialize');
@@ -141,12 +185,29 @@
             workflowCount = document.getElementById('workflowCount');
             errorBanner = document.getElementById('errorBanner');
             workflowList = document.getElementById('workflowList');
+            workflowModal = document.getElementById('workflowModal');
+            workflowForm = document.getElementById('workflowForm');
+            workflowName = document.getElementById('workflowName');
+            cancelWorkflowBtn = document.getElementById('cancelWorkflowBtn');
+            createWorkflowBtn = document.getElementById('createWorkflowBtn');
         }
 
         // Attach event listeners
         function attachListeners() {
-            newWorkflowBtn.addEventListener('click', handleCreate);
+            newWorkflowBtn.addEventListener('click', openCreateModal);
             logoutBtn.addEventListener('click', handleLogout);
+            workflowForm.addEventListener('submit', handleCreate);
+            cancelWorkflowBtn.addEventListener('click', closeCreateModal);
+            workflowModal.addEventListener('click', (event) => {
+                if (event.target === workflowModal) closeCreateModal();
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && !workflowModal.hidden) closeCreateModal();
+                if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') {
+                    event.preventDefault();
+                    openCreateModal();
+                }
+            });
         }
 
         // Load workflows from API
@@ -193,13 +254,14 @@
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'empty-state';
             emptyDiv.innerHTML = `
+                <div class="empty-orb" aria-hidden="true"></div>
                 <h3>No workflows yet</h3>
-                <p>Workflows connect triggers and actions into an automation you can run.</p>
+                <p>Start with a trigger, connect a few thoughtful steps, and turn the repetitive parts of your process into a flow.</p>
                 <button class="btn btn-primary">Create your first workflow</button>
             `;
             // Wire the button to the same create handler
             const btn = emptyDiv.querySelector('button');
-            btn.addEventListener('click', handleCreate);
+            btn.addEventListener('click', openCreateModal);
             workflowList.appendChild(emptyDiv);
         }
 
@@ -221,26 +283,29 @@
             card.dataset.id = workflow.id;
 
             const timeStr = timeAgo(workflow.updated_at);
+            const nodeCount = Array.isArray(workflow.graph_json?.nodes) ? workflow.graph_json.nodes.length : 0;
             const badgeClass = workflow.is_active ? 'badge-active' : 'badge-inactive';
             const badgeLabel = workflow.is_active ? 'Active' : 'Inactive';
             const toggleLabel = workflow.is_active ? 'Deactivate' : 'Activate';
 
             card.innerHTML = `
                 <div class="card-left">
+                    <div class="workflow-kicker">Automation</div>
                     <div class="workflow-name">
                         <span>${escapeHtml(workflow.name)}</span>
                         <span class="badge ${badgeClass}">${badgeLabel}</span>
                     </div>
                     <div class="workflow-meta">Updated ${timeStr}</div>
+                    <div class="workflow-stat">${nodeCount === 1 ? '1 step' : `${nodeCount} steps`}</div>
                     <div class="result-strip" data-for="${workflow.id}"></div>
                 </div>
                 <div class="card-right">
-                    <button class="btn btn-sm open-btn">Open</button>
-                    <button class="btn btn-sm run-btn">
+                    <button class="btn btn-sm open-btn">Open editor</button>
+                    <button class="btn btn-sm btn-primary run-btn">
                         <span class="run-label">Run</span>
                     </button>
                     <button class="btn btn-sm btn-ghost toggle-btn">${toggleLabel}</button>
-                    <button class="btn btn-sm btn-danger delete-btn">Delete</button>
+                    <button class="btn btn-sm btn-danger delete-btn" aria-label="Delete ${escapeHtml(workflow.name)}">Delete</button>
                 </div>
             `;
 
@@ -262,25 +327,43 @@
         }
 
         // Handle create workflow
-        async function handleCreate() {
-            const name = window.prompt('Workflow name:');
-            if (name === null) return;
-            const trimmed = name.trim();
+        function openCreateModal() {
+            workflowName.value = '';
+            workflowModal.hidden = false;
+            workflowModal.setAttribute('aria-hidden', 'false');
+            setTimeout(() => workflowName.focus(), 0);
+        }
+
+        function closeCreateModal() {
+            workflowModal.hidden = true;
+            workflowModal.setAttribute('aria-hidden', 'true');
+            newWorkflowBtn.focus();
+        }
+
+        async function handleCreate(event) {
+            event.preventDefault();
+            const trimmed = workflowName.value.trim();
             if (trimmed === '') return;
 
             try {
+                createWorkflowBtn.disabled = true;
+                createWorkflowBtn.innerHTML = '<span class="spinner"></span> Creating';
                 const data = await apiFetch('/api/workflows', {
                     method: 'POST',
                     body: { name: trimmed }
                 });
                 if (data.error) {
                     showError(data.error);
+                    createWorkflowBtn.disabled = false;
+                    createWorkflowBtn.textContent = 'Create workflow';
                     return;
                 }
                 // Redirect to the new workflow editor
                 window.location.href = '/workflow.html?id=' + data.workflow.id;
             } catch (err) {
                 showError('Failed to create workflow: ' + err.message);
+                createWorkflowBtn.disabled = false;
+                createWorkflowBtn.textContent = 'Create workflow';
             }
         }
 
