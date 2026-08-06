@@ -110,8 +110,25 @@
     position: absolute;
     left: var(--space-3); bottom: var(--space-3);
     display: flex;
-    gap: var(--space-2);
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
   }
+  .canvas-tools .btn { border-color: transparent; background: transparent; }
+  .canvas-tools .btn:hover { background: var(--surface-2); }
+  .zoom-level {
+    min-width: 46px;
+    text-align: center;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-dim);
+    user-select: none;
+  }
+  .tool-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 var(--space-1); }
 
   .inspector-title {
     font-size: var(--text-base);
@@ -191,7 +208,12 @@
         Pick a node from the left to add it, then drag between ports to connect.
       </div>
       <div class="canvas-tools">
-        <button id="fit-btn" class="btn btn-sm" title="Fit graph to view">Fit</button>
+        <button id="zoom-out-btn" class="btn btn-sm" title="Zoom out">&minus;</button>
+        <span class="zoom-level" id="zoom-level">100%</span>
+        <button id="zoom-in-btn" class="btn btn-sm" title="Zoom in">+</button>
+        <span class="tool-sep"></span>
+        <button id="reset-zoom-btn" class="btn btn-sm" title="Reset to 100%">100%</button>
+        <button id="fit-btn" class="btn btn-sm" title="Fit all nodes in view">Fit</button>
       </div>
     </div>
 
@@ -614,29 +636,85 @@ function wireInspector(node, schema) {
   }
 }
 
-/* ---------- Canvas sizing ---------- */
+/* ---------- Canvas sizing, HiDPI, and zoom ----------
+
+   The backing store is sized at devicePixelRatio so nodes and text stay sharp:
+   a 1x buffer stretched across a 2x display is what made the canvas look soft.
+   LiteGraph has no concept of DPR, so we carry it inside ds.scale and treat
+   "zoom" as ds.scale / DPR everywhere it's read or displayed.
+
+   That has one consequence worth spelling out: LiteGraph derives pointer
+   positions from getBoundingClientRect(), which reports CSS pixels, then
+   divides by ds.scale. With DPR folded into that scale, every click would
+   land at half the intended spot — so adjustMouseEvent is patched below to
+   work in the same device-pixel space the drawing uses.
+*/
+
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 2.5;
+
+(function patchPointerForDPR() {
+  const original = LGraphCanvas.prototype.adjustMouseEvent;
+  LGraphCanvas.prototype.adjustMouseEvent = function (e) {
+    original.call(this, e);
+    if (!this.canvas) return;
+    const b = this.canvas.getBoundingClientRect();
+    e.canvasX = ((e.clientX - b.left) * DPR) / this.ds.scale - this.ds.offset[0];
+    e.canvasY = ((e.clientY - b.top) * DPR) / this.ds.scale - this.ds.offset[1];
+    // Drag deltas also come back in CSS pixels — without this, dragging a node
+    // on a 2x display moves it at half the speed of the cursor.
+    e.deltaX *= DPR;
+    e.deltaY *= DPR;
+  };
+})();
+
+function currentZoom() { return canvas.ds.scale / DPR; }
+
+function syncZoomLabel() {
+  if (els.zoom) els.zoom.textContent = Math.round(currentZoom() * 100) + "%";
+}
+
+/* Set zoom while keeping a world point pinned — the viewport centre by
+   default, so zooming never drifts away from what you were looking at. */
+function setZoom(zoom, anchor) {
+  const ds = canvas.ds;
+  const z = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+  const cx = anchor ? anchor[0] : canvasEl.width / (2 * ds.scale) - ds.offset[0];
+  const cy = anchor ? anchor[1] : canvasEl.height / (2 * ds.scale) - ds.offset[1];
+  ds.scale = z * DPR;
+  ds.offset = [
+    canvasEl.width / (2 * ds.scale) - cx,
+    canvasEl.height / (2 * ds.scale) - cy,
+  ];
+  syncZoomLabel();
+  canvas.setDirty(true, true);
+}
 
 function resizeCanvas() {
   const wrap = document.getElementById("canvas-wrap");
-  canvasEl.width = wrap.clientWidth;
-  canvasEl.height = wrap.clientHeight;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  // CSS size stays in layout pixels; the buffer behind it is DPR times larger.
+  canvasEl.style.width = w + "px";
+  canvasEl.style.height = h + "px";
   if (canvas) {
-    canvas.resize(canvasEl.width, canvasEl.height);
+    canvas.resize(w * DPR, h * DPR);
     canvas.setDirty(true, true);
+  } else {
+    canvasEl.width = w * DPR;
+    canvasEl.height = h * DPR;
   }
 }
 
 /* Frame every node in view. LiteGraph's transform is
-   screen = (world + ds.offset) * ds.scale, so centering world point c means
-   offset = viewport/(2*scale) - c. */
+   screen = (world + offset) * scale, so centring world point c means
+   offset = viewport / (2 * scale) - c.
+
+   Clamped to 50-100%: unclamped, a sprawling graph shrinks into unreadable
+   mush, and a two-node graph balloons to a comic zoom on open. */
 function fitToView() {
   const nodes = graph._nodes || [];
-  if (!nodes.length) {
-    canvas.ds.scale = 1;
-    canvas.ds.offset = [0, 0];
-    canvas.setDirty(true, true);
-    return;
-  }
+  if (!nodes.length) { setZoom(1); return; }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of nodes) {
@@ -646,15 +724,15 @@ function fitToView() {
     maxY = Math.max(maxY, n.pos[1] + n.size[1]);
   }
 
-  const pad = 70;
-  const w = canvasEl.width, h = canvasEl.height;
-  const scale = Math.min(w / (maxX - minX + pad * 2), h / (maxY - minY + pad * 2), 1.15);
-  canvas.ds.scale = scale;
-  canvas.ds.offset = [
-    w / (2 * scale) - (minX + maxX) / 2,
-    h / (2 * scale) - (minY + maxY) / 2,
-  ];
-  canvas.setDirty(true, true);
+  const pad = 80;
+  const fitted = Math.min(
+    (canvasEl.width / DPR) / (maxX - minX + pad * 2),
+    (canvasEl.height / DPR) / (maxY - minY + pad * 2)
+  );
+  setZoom(
+    Math.min(Math.max(fitted, 0.5), 1),
+    [(minX + maxX) / 2, (minY + maxY) / 2]
+  );
 }
 
 /* ---------- Save / run ---------- */
@@ -728,6 +806,7 @@ async function init() {
   els.inspector = document.getElementById("inspector-body");
   els.inspectorFoot = document.getElementById("inspector-foot");
   els.hint = document.getElementById("canvas-hint");
+  els.zoom = document.getElementById("zoom-level");
 
   workflowId = new URLSearchParams(window.location.search).get("id");
   if (!workflowId) {
@@ -747,6 +826,12 @@ async function init() {
   canvas.always_render_background = false;
   // No graph.start(): our nodes have no onExecute, so the execution loop would
   // just burn CPU. LGraphCanvas runs its own render loop regardless.
+
+  // ds.scale carries DPR, so DPR *is* 100%. Bound LiteGraph's own wheel-zoom
+  // to the same limits the buttons enforce.
+  canvas.ds.scale = DPR;
+  canvas.ds.min_scale = MIN_ZOOM * DPR;
+  canvas.ds.max_scale = MAX_ZOOM * DPR;
 
   canvas.onNodeSelected = (node) => { selectedNode = node; renderInspector(); };
   canvas.onNodeDeselected = () => { selectedNode = null; renderInspector(); };
@@ -790,6 +875,17 @@ async function init() {
   els.active.addEventListener("change", markDirty);
 
   document.getElementById("fit-btn").addEventListener("click", fitToView);
+  document.getElementById("reset-zoom-btn").addEventListener("click", () => setZoom(1));
+  document.getElementById("zoom-in-btn").addEventListener("click", () => setZoom(currentZoom() * 1.25));
+  document.getElementById("zoom-out-btn").addEventListener("click", () => setZoom(currentZoom() / 1.25));
+
+  // LiteGraph mutates ds.scale directly on wheel-zoom and never emits an event,
+  // so mirror it into the readout each frame rather than guessing.
+  let lastScale = null;
+  (function trackZoom() {
+    if (canvas.ds.scale !== lastScale) { lastScale = canvas.ds.scale; syncZoomLabel(); }
+    requestAnimationFrame(trackZoom);
+  })();
 
   document.getElementById("delete-node-btn").addEventListener("click", deleteSelected);
 
