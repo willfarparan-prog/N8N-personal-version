@@ -1,67 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowForge Login</title>
-    <link rel="stylesheet" href="css/style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowForge — Sign in</title>
+<link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <main class="center-screen">
-        <div class="card auth-card">
-            <h1 class="auth-title">FlowForge</h1>
-            <form id="login-form">
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Log In</button>
-                <div id="error" class="error-message"></div>
-            </form>
+<main class="center-screen">
+  <div class="auth-card">
+    <div class="auth-head">
+      <div class="brand"><span class="brand-mark"></span> FlowForge</div>
+      <p>Sign in to your workspace</p>
+    </div>
+    <div class="card">
+      <form id="login-form">
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" autofocus required>
         </div>
-    </main>
-    <script src="js/app.js"></script>
-    <script>
-        // If already authenticated, skip straight to the app.
-        fetch("/api/session", { credentials: "include" })
-            .then(r => r.json())
-            .then(data => {
-                if (data.authed) {
-                    window.location.href = "/index.html";
-                }
-            })
-            .catch(() => {});
+        <button type="submit" id="submit-btn" class="btn btn-primary btn-block">Sign in</button>
+        <div id="error" class="form-error" role="alert"></div>
+      </form>
+    </div>
+  </div>
+</main>
 
-        const form = document.getElementById("login-form");
-        const passwordInput = document.getElementById("password");
-        const errorDiv = document.getElementById("error");
+<script>
+// Deliberately uses raw fetch rather than apiFetch: a 401 here is the expected
+// "wrong password" case, and apiFetch would bounce us back to this same page.
+fetch("/api/session", { credentials: "include" })
+  .then(r => r.json())
+  .then(d => { if (d.authed) window.location.href = "/index.html"; })
+  .catch(() => {});
 
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            errorDiv.textContent = "";
+const form = document.getElementById("login-form");
+const passwordInput = document.getElementById("password");
+const errorEl = document.getElementById("error");
+const submitBtn = document.getElementById("submit-btn");
 
-            try {
-                const response = await fetch("/api/auth/login", {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ password: passwordInput.value })
-                });
-                const data = await response.json();
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  errorEl.textContent = "";
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="spinner"></span> Signing in';
 
-                if (response.ok && data.ok) {
-                    window.location.href = "/index.html";
-                } else {
-                    errorDiv.textContent = data.error || "Login failed";
-                    passwordInput.value = "";
-                }
-            } catch (err) {
-                errorDiv.textContent = "Network error. Please try again.";
-                passwordInput.value = "";
-            }
-        });
-    </script>
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: passwordInput.value }),
+    });
+    const data = await res.json();
+
+    if (res.ok && data.ok) {
+      window.location.href = "/index.html";
+      return;
+    }
+    errorEl.textContent = data.error || "Sign in failed";
+    passwordInput.value = "";
+    passwordInput.focus();
+  } catch {
+    errorEl.textContent = "Network error. Please try again.";
+    passwordInput.value = "";
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Sign in";
+  }
+});
+</script>
 </body>
 </html>

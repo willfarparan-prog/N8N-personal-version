@@ -3,294 +3,401 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowForge - Execution Detail</title>
+    <title>Execution &mdash; FlowForge</title>
     <link rel="stylesheet" href="/css/style.css">
     <style>
-        /* Status badge colors */
-        .badge-success { background-color: #10b981; color: #fff; }
-        .badge-failed { background-color: #ef4444; color: #fff; }
-        .badge-pending, .badge-running, .badge-pending_external { background-color: #f59e0b; color: #000; }
-        .badge-skipped { background-color: #6b7280; color: #fff; }
-
-        /* Error block */
-        .error-block {
-            background-color: #2a1a1a;
-            border: 1px solid #ef4444;
-            border-radius: 0.25rem;
-            padding: 0.75rem;
-            margin: 0.5rem 0;
-            color: #fca5a5;
+        /* PAGE-SPECIFIC UTILITIES */
+        .def-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: var(--space-2) var(--space-5);
+            margin-top: var(--space-4);
         }
-
-        /* Log timeline */
-        .log-timeline {
-            margin-top: 2rem;
-            border-left: 2px solid #2a2a2a;
-            padding-left: 1.5rem;
-            margin-left: 0.5rem;
+        .def-grid > div:nth-child(odd) {
+            color: var(--text-faint);
+            font-size: var(--text-sm);
         }
-
-        .log-entry {
-            background-color: #1a1a1a;
-            border: 1px solid #2a2a2a;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            margin-bottom: 1rem;
+        .def-grid > div:nth-child(even) {
+            font-size: var(--text-sm);
+        }
+        .mono-id {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+        }
+        .badge-large {
+            font-size: var(--text-sm);
+            padding: 0.25rem 0.625rem;
+        }
+        .muted {
+            color: var(--text-dim);
+        }
+        .text-sm {
+            font-size: var(--text-sm);
+        }
+        .text-xs {
+            font-size: var(--text-xs);
+        }
+        .flex-row {
+            display: flex;
+            align-items: center;
+        }
+        .gap-3 {
+            gap: var(--space-3);
+        }
+        .gap-2 {
+            gap: var(--space-2);
+        }
+        .faint-label {
+            color: var(--text-faint);
+        }
+        .timeline-heading {
+            margin-bottom: var(--space-4);
+        }
+        /* TIMELINE */
+        .timeline {
+            border-left: 2px solid var(--border);
+            padding-left: var(--space-5);
+            margin-left: var(--space-2);
+            margin-top: var(--space-5);
+        }
+        .timeline .card {
             position: relative;
+            margin-bottom: var(--space-4);
         }
-
-        .log-entry::before {
-            content: '';
+        .timeline .card:last-child {
+            margin-bottom: 0;
+        }
+        /* Dot positioned to be centered on the 2px rail.
+           Left offset: negative of padding-left (var(--space-5)) minus 6px.
+           The rail is 2px wide, centered at 1px left of the padding box.
+           The dot (10px border-box) needs to start 5px left of that center point.
+           So offset = padding-left + 1px + 5px = padding-left + 6px. Negative left uses negative of that sum. */
+        .timeline .card::before {
+            content: "";
             position: absolute;
-            left: -1.6rem;
-            top: 1.5rem;
+            left: calc(var(--space-5) * -1 - 6px);
+            top: var(--space-5);
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background-color: #4b5563;
+            background: var(--neutral);
+            border: 2px solid var(--bg);
         }
-
-        .log-entry h3 {
-            margin: 0 0 0.5rem 0;
-            color: #eee;
-            font-size: 1.1rem;
-        }
-
-        .log-meta {
-            font-size: 0.875rem;
-            color: #888;
-            margin: 0.5rem 0;
-        }
-
-        /* Output JSON pre */
-        .output-pre {
-            background-color: #111;
-            border: 1px solid #333;
-            border-radius: 0.25rem;
-            padding: 0.75rem;
-            margin: 0.5rem 0;
-            max-height: 300px;
-            overflow: auto;
-            font-size: 0.875rem;
-            color: #ccc;
-        }
-
-        /* Auto-refresh indicator */
-        .auto-refresh-indicator {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.875rem;
-            color: #10b981;
-            margin-left: 1rem;
-        }
-
-        .pulse-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #10b981;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
+        .node-success::before { background: var(--success); }
+        .node-failed::before { background: var(--danger); }
+        .node-running::before,
+        .node-pending_external::before { background: var(--warning); }
+        .node-skipped::before { background: var(--neutral); }
+        /* Live indicator is flex; hidden attribute should still hide it */
+        #live-indicator[hidden] {
+            display: none !important;
         }
     </style>
 </head>
 <body>
     <div class="toolbar">
-        <a href="/index.html" class="btn btn-secondary">← Back to Dashboard</a>
-        <h1>Execution Detail</h1>
-        <span id="refresh-indicator" style="display:none;" class="auto-refresh-indicator">
-            <span class="pulse-dot"></span>
-            <span>Live — auto-refreshing</span>
-        </span>
+        <a href="/index.html" class="btn btn-ghost">&larr; Back</a>
+        <div class="brand"><span class="brand-mark"></span>FlowForge</div>
+        <div class="toolbar-spacer"></div>
+        <div id="live-indicator" hidden class="flex-row gap-2">
+            <span class="dot-pulse"></span>
+            <span class="text-xs muted">Live</span>
+        </div>
     </div>
-
-    <div id="app"></div>
+    <div class="page">
+        <div id="app"></div>
+    </div>
 
     <script src="/js/app.js"></script>
     <script>
-        let currentData = null;
-        let pollInterval = null;
+        // Module state
+        let executionId = null;
+        let pollTimer = null;
+        let hasRendered = false;
+        let collapseInitialized = false;
+        let expandedNodes = new Set();
+        let seenNodes = new Set();
 
-        function statusBadgeClass(status) {
+        // Status to CSS class mapping (whitelist for safety)
+        const statusClass = (status) => {
             const map = {
-                'success': 'badge-success',
-                'failed': 'badge-failed',
-                'pending': 'badge-pending',
-                'running': 'badge-running',
-                'pending_external': 'badge-pending_external',
-                'skipped': 'badge-skipped'
+                success: 'success',
+                failed: 'failed',
+                running: 'running',
+                pending: 'running',
+                pending_external: 'pending_external',
+                skipped: 'skipped'
             };
-            return map[status] || '';
-        }
+            return map[status] || 'skipped';
+        };
 
-        function formatDateTime(isoString) {
-            if (!isoString) return '—';
-            return new Date(isoString).toLocaleString();
-        }
+        // Duration formatting
+        const formatDuration = (startIso, endIso) => {
+            if (!startIso || !endIso) return '&mdash;';
+            const start = new Date(startIso);
+            const end = new Date(endIso);
+            const ms = end - start;
+            if (isNaN(ms) || ms < 0) return '&mdash;';
+            if (ms < 1000) return `${Math.round(ms)}ms`;
+            if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+            const minutes = Math.floor(ms / 60000);
+            const seconds = Math.floor((ms % 60000) / 1000);
+            return `${minutes}m ${seconds}s`;
+        };
 
-        function render(data) {
-            const app = document.getElementById('app');
-            if (!app) return;
+        // Timestamp formatting
+        const formatTime = (iso) => {
+            if (!iso) return '&mdash;';
+            const d = new Date(iso);
+            if (isNaN(d)) return '&mdash;';
+            return d.toLocaleString();
+        };
 
-            const exec = data.execution;
-            const logs = data.logs || [];
-
-            const shouldPoll = ['pending', 'running', 'pending_external'].includes(exec.status);
-            const indicator = document.getElementById('refresh-indicator');
-            if (indicator) {
-                indicator.style.display = shouldPoll ? 'inline-flex' : 'none';
-            }
-
-            // Stop polling if finished
-            if (!shouldPoll && pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
-
-            let html = `
-                <div class="card" style="margin-bottom: 2rem;">
-                    <h2 style="margin-top: 0;">Execution ${escapeHtml(exec.id)}</h2>
-                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                        <span class="badge ${statusBadgeClass(exec.status)}">${escapeHtml(exec.status)}</span>
-                        <span>Trigger: ${escapeHtml(exec.trigger_type)}</span>
+        // Render summary card
+        const renderSummary = (execution) => {
+            const status = execution.status || 'unknown';
+            const statusCls = statusClass(status);
+            const duration = formatDuration(execution.started_at, execution.finished_at);
+            const finished = execution.finished_at ? formatTime(execution.finished_at) : 'In progress';
+            return `
+                <div class="card" style="margin-bottom: var(--space-6);">
+                    <div class="flex-row gap-3">
+                        <span class="badge badge-${statusCls} badge-large">${escapeHtml(status)}</span>
+                        <span class="text-sm muted">${escapeHtml(execution.trigger_type || 'unknown')} trigger</span>
+                        <div class="toolbar-spacer"></div>
+                        <span class="text-sm muted">${duration}</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: auto auto; gap: 0.5rem 2rem;">
-                        <div><strong>Started:</strong></div>
-                        <div>${formatDateTime(exec.started_at)}</div>
-                        <div><strong>Finished:</strong></div>
-                        <div>${exec.finished_at ? formatDateTime(exec.finished_at) : 'In progress'}</div>
+                    <div class="def-grid">
+                        <div>Execution</div>
+                        <div class="mono-id">${escapeHtml(execution.id || '')}</div>
+                        <div>Started</div>
+                        <div>${formatTime(execution.started_at)}</div>
+                        <div>Finished</div>
+                        <div>${finished}</div>
                     </div>
+                    ${execution.error ? `
+                        <div class="banner" style="margin-top: var(--space-4);">
+                            <strong>Execution failed</strong><br>${escapeHtml(execution.error)}
+                        </div>
+                    ` : ''}
+                </div>
             `;
+        };
 
-            if (exec.error) {
-                html += `
-                    <div class="error-block" style="margin-top: 1rem;">
-                        <strong>Execution Error:</strong><br>
-                        ${escapeHtml(exec.error)}
+        // Render a single timeline node entry
+        const renderNodeEntry = (log) => {
+            const status = log.status || 'skipped';
+            const statusCls = statusClass(status);
+            const nodeCls = `node-${statusCls}`;
+            const duration = formatDuration(log.started_at, log.finished_at);
+            const hasOutput = log.output_json && typeof log.output_json === 'object' && Object.keys(log.output_json).length > 0;
+            const isExpanded = expandedNodes.has(log.id);
+            const outputHtml = hasOutput ? escapeHtml(JSON.stringify(log.output_json, null, 2)) : '';
+            const finished = log.finished_at ? formatTime(log.finished_at) : 'In progress';
+            return `
+                <div class="card ${nodeCls}">
+                    <div class="flex-row gap-3">
+                        <h3 class="text-sm" style="font-family: var(--font-mono);">${escapeHtml(log.node_type || 'unknown')}</h3>
+                        <span class="text-xs muted">node ${escapeHtml(log.node_id || '')}</span>
+                        <span class="badge badge-${statusCls}">${escapeHtml(status)}</span>
+                        <div class="toolbar-spacer"></div>
+                        <span class="text-xs muted">${duration}</span>
+                    </div>
+                    <div class="text-xs muted" style="margin-top: var(--space-2);">
+                        <span class="faint-label">Started</span> ${formatTime(log.started_at)} &middot; <span class="faint-label">Finished</span> ${finished}
+                    </div>
+                    ${log.error ? `
+                        <div class="banner" style="margin-top: var(--space-3);">
+                            ${escapeHtml(log.error)}
+                        </div>
+                    ` : ''}
+                    ${hasOutput ? `
+                        <div style="margin-top: var(--space-4);">
+                            <button class="btn btn-sm btn-ghost" data-toggle-node="${escapeHtml(log.id)}">
+                                ${isExpanded ? 'Hide output' : 'Show output'}
+                            </button>
+                            <div ${isExpanded ? '' : 'hidden'}>
+                                <pre class="code">${outputHtml}</pre>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="text-sm" style="margin-top: var(--space-4); color: var(--text-faint);">No output</div>
+                    `}
+                </div>
+            `;
+        };
+
+        // Render timeline section
+        const renderTimeline = (logs) => {
+            if (!logs || logs.length === 0) {
+                return `<div class="empty-state"><h3>No nodes yet</h3><p>No node activity recorded for this run.</p></div>`;
+            }
+            // First-render collapse defaults
+            if (!collapseInitialized) {
+                if (logs.length <= 3) {
+                    logs.forEach(log => {
+                        const hasOutput = log.output_json && typeof log.output_json === 'object' && Object.keys(log.output_json).length > 0;
+                        if (hasOutput) expandedNodes.add(log.id);
+                        seenNodes.add(log.id);
+                    });
+                } else {
+                    const firstFailed = logs.find(log => log.status === 'failed');
+                    if (firstFailed) expandedNodes.add(firstFailed.id);
+                    logs.forEach(log => seenNodes.add(log.id));
+                }
+                collapseInitialized = true;
+            } else {
+                // For late-arriving logs, apply default rule individually and add to seen set
+                logs.forEach(log => {
+                    if (!seenNodes.has(log.id)) {
+                        const hasOutput = log.output_json && typeof log.output_json === 'object' && Object.keys(log.output_json).length > 0;
+                        if (logs.length <= 3 && hasOutput) {
+                            expandedNodes.add(log.id);
+                        } else if (logs.length > 3 && log.status === 'failed' && !expandedNodes.size) {
+                            expandedNodes.add(log.id);
+                        }
+                        seenNodes.add(log.id);
+                    }
+                });
+            }
+            const entries = logs.map(renderNodeEntry).join('');
+            return `
+                <h2 class="timeline-heading">Nodes</h2>
+                <div class="timeline">
+                    ${entries}
+                </div>
+            `;
+        };
+
+        // Main render function
+        const render = (data) => {
+            const app = document.getElementById('app');
+            if (!data || !data.execution) {
+                app.innerHTML = `
+                    <div class="card">
+                        <h3>Could not load execution</h3>
+                        <p class="muted">Invalid response from server.</p>
+                        <button class="btn btn-primary" data-action="retry">Retry</button>
                     </div>
                 `;
+                // Wire the retry button
+                const btn = app.querySelector('[data-action="retry"]');
+                if (btn) btn.addEventListener('click', () => { load(); });
+                return;
             }
+            app.innerHTML = renderSummary(data.execution) + renderTimeline(data.logs);
+            hasRendered = true;
+        };
 
-            html += `</div>`;
-
-            // Logs timeline
-            if (logs.length > 0) {
-                html += `<h2>Node Logs</h2><div class="log-timeline">`;
-
-                logs.forEach(log => {
-                    html += `
-                        <div class="log-entry">
-                            <h3>${escapeHtml(log.node_type)} (${escapeHtml(log.node_id)})</h3>
-                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;">
-                                <span class="badge ${statusBadgeClass(log.status)}">${escapeHtml(log.status)}</span>
-                            </div>
-                            <div class="log-meta">
-                                <div><strong>Started:</strong> ${formatDateTime(log.started_at)}</div>
-                                <div><strong>Finished:</strong> ${log.finished_at ? formatDateTime(log.finished_at) : 'In progress'}</div>
-                            </div>
-                    `;
-
-                    if (log.error) {
-                        html += `
-                            <div class="error-block">
-                                <strong>Node Error:</strong><br>
-                                ${escapeHtml(log.error)}
-                            </div>
-                        `;
-                    }
-
-                    if (log.output_json) {
-                        html += `
-                            <div style="margin-top: 0.5rem;">
-                                <strong>Output:</strong>
-                                <pre class="output-pre">${escapeHtml(JSON.stringify(log.output_json, null, 2))}</pre>
-                            </div>
-                        `;
-                    } else {
-                        html += `<div style="margin-top: 0.5rem;"><strong>Output:</strong> No output</div>`;
-                    }
-
-                    html += `</div>`;
-                });
-
-                html += `</div>`;
+        // Polling control
+        const syncPolling = (status) => {
+            const liveEl = document.getElementById('live-indicator');
+            const pollingStates = ['pending', 'running', 'pending_external'];
+            if (pollingStates.includes(status)) {
+                liveEl.hidden = false;
+                if (!pollTimer) {
+                    pollTimer = setInterval(load, 3000);
+                }
             } else {
-                html += `<div class="card">No logs available for this execution.</div>`;
-            }
-
-            app.innerHTML = html;
-            currentData = data;
-        }
-
-        async function fetchAndRender(id) {
-            try {
-                const data = await apiFetch(`/api/executions/${id}`);
-                render(data);
-            } catch (error) {
-                const app = document.getElementById('app');
-                if (app) {
-                    app.innerHTML = `
-                        <div class="card" style="border-color: #ef4444;">
-                            <h2 style="color: #ef4444;">Error Loading Execution</h2>
-                            <p>${escapeHtml(error.message)}</p>
-                            <button onclick="window.location.reload()" class="btn btn-secondary">Retry</button>
-                        </div>
-                    `;
+                liveEl.hidden = true;
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
                 }
             }
-        }
+        };
 
-        async function init() {
+        // Load data from API
+        const load = async () => {
+            try {
+                const data = await apiFetch('/api/executions/' + encodeURIComponent(executionId));
+                render(data);
+                if (data.execution) {
+                    syncPolling(data.execution.status);
+                }
+            } catch (err) {
+                // Only render error if nothing has been rendered yet
+                if (!hasRendered) {
+                    const app = document.getElementById('app');
+                    app.innerHTML = `
+                        <div class="card">
+                            <h3>Could not load execution</h3>
+                            <p class="muted">${escapeHtml(err.message)}</p>
+                            <button class="btn btn-primary" data-action="retry">Retry</button>
+                        </div>
+                    `;
+                    // Wire the retry button
+                    const btn = app.querySelector('[data-action="retry"]');
+                    if (btn) btn.addEventListener('click', () => { load(); });
+                } else {
+                    // Poll error: swallow and keep polling interval running for recovery
+                    console.warn('Execution poll failed:', err);
+                }
+                // Note: we deliberately do NOT call syncPolling('success') here,
+                // so the polling interval remains active for transient failures.
+            }
+        };
+
+        // Toggle event delegation
+        const setupEventDelegation = () => {
+            document.getElementById('app').addEventListener('click', (e) => {
+                const toggleBtn = e.target.closest('[data-toggle-node]');
+                if (!toggleBtn) return;
+                const logId = toggleBtn.getAttribute('data-toggle-node');
+                if (expandedNodes.has(logId)) {
+                    expandedNodes.delete(logId);
+                } else {
+                    expandedNodes.add(logId);
+                }
+                // Toggle visibility and button label without full re-render
+                const container = toggleBtn.nextElementSibling;
+                if (container) {
+                    container.hidden = !container.hidden;
+                    toggleBtn.textContent = container.hidden ? 'Show output' : 'Hide output';
+                }
+            });
+        };
+
+        // Initialize page
+        const init = async () => {
             try {
                 await requireAuth();
-
-                const params = new URLSearchParams(window.location.search);
-                const id = params.get('id');
-
-                if (!id) {
-                    const app = document.getElementById('app');
-                    if (app) {
-                        app.innerHTML = `
-                            <div class="card" style="border-color: #f59e0b;">
-                                <h2 style="color: #f59e0b;">Missing Execution ID</h2>
-                                <p>No execution id provided in URL.</p>
-                                <a href="/index.html" class="btn btn-primary">Go to Dashboard</a>
-                            </div>
-                        `;
-                    }
-                    return;
-                }
-
-                await fetchAndRender(id);
-
-                // Set up polling if needed
-                if (currentData && ['pending', 'running', 'pending_external'].includes(currentData.execution.status)) {
-                    if (!pollInterval) {
-                        pollInterval = setInterval(() => fetchAndRender(id), 3000);
-                    }
-                }
-            } catch (error) {
-                console.error('Initialization error:', error);
-                const app = document.getElementById('app');
-                if (app) {
-                    app.innerHTML = `
-                        <div class="card" style="border-color: #ef4444;">
-                            <h2 style="color: #ef4444;">Initialization Error</h2>
-                            <p>${escapeHtml(error.message)}</p>
-                            <button onclick="window.location.reload()" class="btn btn-secondary">Retry</button>
+                executionId = new URLSearchParams(window.location.search).get('id');
+                if (!executionId) {
+                    document.getElementById('app').innerHTML = `
+                        <div class="empty-state">
+                            <h3>No execution selected</h3>
+                            <p>No execution id was provided in the URL.</p>
+                            <a href="/index.html" class="btn btn-primary">Back to workflows</a>
                         </div>
                     `;
+                    return;
                 }
+                setupEventDelegation();
+                await load();
+            } catch (err) {
+                document.getElementById('app').innerHTML = `
+                    <div class="card">
+                        <h3>Initialization error</h3>
+                        <p class="muted">${escapeHtml(err.message)}</p>
+                        <button class="btn btn-primary" data-action="retry-init">Retry</button>
+                    </div>
+                `;
+                // Wire the retry button
+                const btn = document.querySelector('[data-action="retry-init"]');
+                if (btn) btn.addEventListener('click', () => { init(); });
             }
-        }
+        };
 
-        // Start initialization
+        // Clean up polling on page unload
+        window.addEventListener('beforeunload', () => {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+        });
+
+        // Start
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {

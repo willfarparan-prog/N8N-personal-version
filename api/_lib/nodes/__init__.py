@@ -24,5 +24,9 @@ _MODULES = [
 for _name in _MODULES:
     try:
         __import__(f"{__name__}.{_name}")
-    except ImportError:
-        pass
+    except ImportError as exc:
+        # Keep booting with a partial node set rather than taking down every
+        # route that imports the engine — but say so loudly. Swallowing this
+        # silently turns a typo in one executor into a baffling
+        # "Unknown node type" at run time instead of a traceable import error.
+        print(f"[flowforge] node module {_name!r} failed to import: {exc}")

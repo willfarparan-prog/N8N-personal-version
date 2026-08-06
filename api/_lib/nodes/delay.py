@@ -22,6 +22,11 @@ def run(ctx: ExecutionContext) -> NodeResult:
         status="pending_external",
         external_ref={
             "provider": "delay",
-            "resume_at": resume_at
+            "resume_at": resume_at,
+            # A delay produces no data of its own, but downstream nodes still need
+            # whatever fed into it. Stash the resolved inputs here so poll_jobs.py can
+            # hand them back as this node's outputs on resume — otherwise everything
+            # after a delay resolves to nothing.
+            "passthrough": ctx.inputs,
         }
     )

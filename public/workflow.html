@@ -1,413 +1,825 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlowForge - Workflow</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
-    <link rel="stylesheet" href="/css/style.css">
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            font-family: sans-serif;
-        }
-        #app {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        .toolbar {
-            flex-shrink: 0;
-            padding: 0.75rem 1rem;
-            gap: 1rem;
-            align-items: center;
-        }
-        #name-input {
-            flex: 1;
-            max-width: 300px;
-            padding: 0.4rem 0.6rem;
-            border: 1px solid #555;
-            border-radius: 4px;
-            background: #2a2a2a;
-            color: #fff;
-        }
-        #graph-canvas {
-            flex: 1;
-            width: 100%;
-            height: 100%;
-            display: block;
-            background: #1a1a1a;
-        }
-        #status-area {
-            margin-left: 0.5rem;
-            color: #ccc;
-            font-size: 0.9rem;
-        }
-        .active-toggle-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-left: 0.5rem;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlowForge — Editor</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/css/litegraph.css">
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+
+  .editor { display: flex; flex-direction: column; height: 100%; }
+
+  .name-input {
+    width: 260px;
+    background: transparent;
+    border-color: transparent;
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+  .name-input:hover { border-color: var(--border); }
+
+  .status-msg {
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .status-msg a { white-space: nowrap; }
+
+  .dirty-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--warning); flex-shrink: 0;
+  }
+
+  /* Three-pane body: palette | canvas | inspector */
+  .workspace { display: flex; flex: 1; min-height: 0; }
+
+  .palette, .inspector {
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .palette { width: 208px; border-right: 1px solid var(--border); }
+  .inspector { width: 320px; border-left: 1px solid var(--border); }
+
+  .pane-head {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .pane-body { overflow-y: auto; padding: var(--space-3); flex: 1; }
+
+  .palette-group + .palette-group { margin-top: var(--space-4); }
+  .palette-group-label {
+    padding: 0 var(--space-1) var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--text-faint);
+  }
+  .palette-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 0.4375rem var(--space-2);
+    margin-bottom: 2px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .palette-item:hover { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+  .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .canvas-wrap { flex: 1; position: relative; min-width: 0; background: var(--canvas); }
+  #graph-canvas { display: block; width: 100%; height: 100%; }
+
+  .canvas-hint {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-faint);
+    font-size: var(--text-sm);
+    pointer-events: none;
+    max-width: 320px;
+    line-height: 1.7;
+  }
+  .canvas-hint strong { color: var(--text-dim); display: block; margin-bottom: var(--space-2); font-size: var(--text-base); }
+
+  .canvas-tools {
+    position: absolute;
+    left: var(--space-3); bottom: var(--space-3);
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .inspector-title {
+    font-size: var(--text-base);
+    font-weight: 600;
+    margin-bottom: var(--space-1);
+  }
+  .inspector-type {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-faint);
+    margin-bottom: var(--space-4);
+    word-break: break-all;
+  }
+  .inspector-desc {
+    padding: var(--space-3);
+    margin-bottom: var(--space-4);
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    font-size: var(--text-xs);
+    line-height: 1.6;
+  }
+  .inspector-foot {
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .io-list { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+  .io-chip {
+    padding: 0.125rem 0.375rem;
+    background: var(--surface-2);
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--text-dim);
+  }
+
+  .copy-row { display: flex; gap: var(--space-2); }
+  .copy-row input { font-family: var(--font-mono); font-size: 0.6875rem; }
+
+  .invalid { border-color: var(--danger) !important; }
+  .invalid-msg { margin-top: var(--space-1); color: var(--danger); font-size: var(--text-xs); }
+
+  @media (max-width: 1100px) {
+    .palette { width: 168px; }
+    .inspector { width: 280px; }
+  }
+</style>
 </head>
 <body>
-    <div id="app">
-        <div class="toolbar">
-            <a href="/index.html" class="btn">← Back</a>
-            <input type="text" id="name-input" placeholder="Workflow name">
-            <button id="save-btn" class="btn btn-primary">Save</button>
-            <button id="run-btn" class="btn btn-secondary">Run Now</button>
-            <div class="active-toggle-wrapper">
-                <input type="checkbox" id="active-toggle">
-                <label for="active-toggle">Active</label>
-            </div>
-            <span id="status-area"></span>
-        </div>
-        <canvas id="graph-canvas"></canvas>
+
+<div class="editor">
+  <div class="toolbar">
+    <a href="/index.html" class="btn btn-ghost btn-sm">← Workflows</a>
+    <input type="text" id="name-input" class="name-input" placeholder="Untitled workflow" aria-label="Workflow name">
+    <div class="toolbar-spacer"></div>
+    <span class="status-msg" id="status-msg"></span>
+    <label class="checkbox-row" title="Inactive workflows won't fire from webhooks or schedules">
+      <input type="checkbox" id="active-toggle">
+      <span>Active</span>
+    </label>
+    <button id="save-btn" class="btn btn-sm">Save</button>
+    <button id="run-btn" class="btn btn-primary btn-sm">Run</button>
+  </div>
+
+  <div class="workspace">
+    <aside class="palette">
+      <div class="pane-head">Nodes</div>
+      <div class="pane-body" id="palette-body"></div>
+    </aside>
+
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="graph-canvas"></canvas>
+      <div class="canvas-hint" id="canvas-hint">
+        <strong>Start with a trigger</strong>
+        Pick a node from the left to add it, then drag between ports to connect.
+      </div>
+      <div class="canvas-tools">
+        <button id="fit-btn" class="btn btn-sm" title="Fit graph to view">Fit</button>
+      </div>
     </div>
 
-    <script src="/js/app.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
-    <script>
-        // Register all 11 node types
-        function ManualTriggerNode() {
-            this.addOutput("payload", "");
+    <aside class="inspector">
+      <div class="pane-head">Inspector</div>
+      <div class="pane-body" id="inspector-body"></div>
+      <div class="inspector-foot" id="inspector-foot" hidden>
+        <button id="delete-node-btn" class="btn btn-danger btn-sm btn-block">Delete node</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/litegraph.js@0.7.18/build/litegraph.min.js"></script>
+<script>
+/* ===========================================================================
+   Node schemas — the single source of truth.
+   The palette, the registered LiteGraph node classes, and the inspector form
+   are all generated from this list, so a node can never drift out of sync
+   between the three. Adding a node type here is the ONLY frontend change
+   needed (plus its executor in api/_lib/nodes/).
+
+   `inputs`/`outputs` names MUST match the backend exactly: the engine resolves
+   data between nodes by slot NAME (see _resolve_inputs in api/_lib/engine.py).
+   =========================================================================== */
+
+const CATEGORY_COLORS = {
+  Triggers: "#22c55e",
+  Actions:  "#7c5cff",
+  AI:       "#e0724d",
+  Logic:    "#f59e0b",
+  Data:     "#38bdf8",
+};
+
+const NODE_SCHEMAS = [
+  {
+    type: "trigger/manual", title: "Manual Trigger", category: "Triggers",
+    description: "Starts the workflow when you press Run. The payload you pass to the run endpoint arrives on the output.",
+    inputs: [], outputs: ["payload"], fields: [],
+  },
+  {
+    type: "trigger/webhook", title: "Webhook Trigger", category: "Triggers",
+    description: "Starts the workflow when an external service POSTs to this workflow's webhook URL. The JSON body arrives on the output.",
+    inputs: [], outputs: ["payload"], fields: [], showWebhookUrl: true,
+  },
+  {
+    type: "trigger/schedule", title: "Schedule Trigger", category: "Triggers",
+    description: "Starts the workflow on a cron schedule. Checked every minute; the workflow must be Active for it to fire.",
+    inputs: [], outputs: ["payload"],
+    fields: [
+      { key: "cron_expression", label: "Cron expression", type: "text", default: "*/15 * * * *",
+        hint: "Standard 5-field cron, in UTC. e.g. */15 * * * * runs every 15 minutes." },
+    ],
+  },
+  {
+    type: "action/http_request", title: "HTTP Request", category: "Actions",
+    description: "Makes an outbound HTTP call. Any status code counts as success — branch on status_code downstream if you need to treat 4xx/5xx as failure.",
+    inputs: ["url", "body"], outputs: ["status_code", "headers", "body"],
+    fields: [
+      { key: "method", label: "Method", type: "select", default: "GET",
+        options: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+      { key: "url", label: "URL", type: "text", default: "", placeholder: "https://api.example.com/endpoint",
+        hint: "A connected url input overrides this value." },
+      { key: "headers", label: "Headers", type: "json", default: "{}" },
+      { key: "body", label: "Body", type: "json", default: "{}",
+        hint: "Sent as JSON. A connected body input overrides this value." },
+      { key: "timeout_seconds", label: "Timeout (seconds)", type: "number", default: 20 },
+    ],
+  },
+  {
+    type: "action/supabase_query", title: "Supabase Query", category: "Actions",
+    description: "Reads or writes your own Supabase tables. Runs with the service role key, so it bypasses row level security.",
+    inputs: ["data"], outputs: ["data"],
+    fields: [
+      { key: "table", label: "Table", type: "text", default: "", placeholder: "my_table" },
+      { key: "operation", label: "Operation", type: "select", default: "select",
+        options: ["select", "insert", "update", "delete"] },
+      { key: "filters", label: "Filters", type: "json", default: "{}",
+        hint: "Column/value pairs, applied as equality filters. Used by select, update and delete." },
+      { key: "data", label: "Row data", type: "json", default: "{}",
+        hint: "Required for insert and update. A connected data input overrides this." },
+    ],
+  },
+  {
+    type: "action/fal_generate_image", title: "Generate Image", category: "AI",
+    description: "Generates an image with fal.ai and waits for the result. Use the image_url output to pass the result along.",
+    inputs: ["prompt"], outputs: ["result", "image_url"],
+    fields: [
+      { key: "model", label: "Model", type: "text", default: "fal-ai/flux/dev",
+        hint: "Any fal.ai model id, e.g. fal-ai/flux/dev." },
+      { key: "input", label: "Model input", type: "json", default: '{"prompt": ""}',
+        hint: "Passed straight to the model. A connected prompt input overrides the prompt field." },
+    ],
+  },
+  {
+    type: "action/fal_train_lora", title: "Train LoRA", category: "AI",
+    description: "Submits a LoRA training job to fal.ai. Training takes minutes, so the workflow pauses here and resumes automatically when the job finishes.",
+    inputs: [], outputs: ["result"],
+    fields: [
+      { key: "model", label: "Training endpoint", type: "text", default: "fal-ai/flux-lora-fast-training" },
+      { key: "input", label: "Training input", type: "json",
+        default: '{\n  "images_data_url": "",\n  "trigger_word": ""\n}',
+        hint: "images_data_url should point to a zip of your training images." },
+    ],
+  },
+  {
+    type: "action/llm_prompt", title: "LLM Prompt", category: "AI",
+    description: "Sends a prompt to any model on OpenRouter and returns the generated text.",
+    inputs: ["prompt"], outputs: ["text", "raw"],
+    fields: [
+      { key: "model", label: "Model", type: "text", default: "deepseek/deepseek-v3.2",
+        hint: "Any OpenRouter model slug. DeepSeek is the cheap default." },
+      { key: "system_prompt", label: "System prompt", type: "textarea", default: "" },
+      { key: "user_prompt", label: "User prompt", type: "textarea", default: "",
+        hint: "A connected prompt input replaces this entirely." },
+    ],
+  },
+  {
+    type: "action/delay", title: "Delay", category: "Actions",
+    description: "Pauses the workflow, then continues. The run parks in pending_external and a background poller resumes it — whatever came in on the input is passed straight through.",
+    inputs: ["payload"], outputs: ["payload"],
+    fields: [
+      { key: "seconds", label: "Wait (seconds)", type: "number", default: 300 },
+    ],
+  },
+  {
+    type: "logic/condition", title: "Condition", category: "Logic",
+    description: "Compares two values and outputs true or false. Note: this does not branch the graph — downstream nodes still run. Use the boolean as data.",
+    inputs: ["value1", "value2"], outputs: ["result"],
+    fields: [
+      { key: "left", label: "Left value", type: "text", default: "{{value1}}",
+        hint: "Use {{value1}} or {{value2}} to reference a connected input, or type a literal." },
+      { key: "operator", label: "Operator", type: "select", default: "eq",
+        options: ["eq", "neq", "gt", "lt", "gte", "lte", "contains"] },
+      { key: "right", label: "Right value", type: "text", default: "{{value2}}" },
+    ],
+  },
+  {
+    type: "data/set", title: "Set / Transform", category: "Data",
+    description: "Reshapes data into named output fields. Deliberately not code evaluation — mappings only.",
+    inputs: ["value1", "value2"], outputs: ["out1", "out2", "out3"],
+    fields: [
+      { key: "mappings", label: "Mappings", type: "json",
+        default: '[\n  { "output_name": "out1", "source": "{{value1}}" }\n]',
+        hint: "Name each output and where it comes from. Only out1-out3 are wireable downstream." },
+    ],
+  },
+];
+
+const SCHEMA_BY_TYPE = Object.fromEntries(NODE_SCHEMAS.map(s => [s.type, s]));
+
+/* Which fields hold JSON. Kept as STRINGS while editing so the textarea stays
+   faithful to what you typed (including invalid intermediate states), and
+   converted to real objects only on save — the executors expect dicts/lists. */
+function jsonFieldKeys(type) {
+  const schema = SCHEMA_BY_TYPE[type];
+  if (!schema) return [];
+  return schema.fields.filter(f => f.type === "json").map(f => f.key);
+}
+
+/* ---------- Register node classes from the schemas ---------- */
+
+for (const schema of NODE_SCHEMAS) {
+  function NodeClass() {
+    for (const name of schema.inputs) this.addInput(name, "");
+    for (const name of schema.outputs) this.addOutput(name, "");
+    this.properties = {};
+    for (const f of schema.fields) this.properties[f.key] = f.default;
+    this.color = CATEGORY_COLORS[schema.category] || "#7c5cff";
+    this.bgcolor = "#171b24";
+    this.size = [190, Math.max(30, 26 * Math.max(schema.inputs.length, schema.outputs.length) + 8)];
+  }
+  NodeClass.title = schema.title;
+  // No onExecute: these nodes are structural config only. Execution happens
+  // server-side in api/_lib/engine.py, never in the browser.
+  LiteGraph.registerNodeType(schema.type, NodeClass);
+}
+
+/* ---------- Graph <-> API translation ---------- */
+
+function graphForSave(graphData) {
+  const out = JSON.parse(JSON.stringify(graphData));
+  for (const node of out.nodes || []) {
+    const keys = jsonFieldKeys(node.type);
+    if (!keys.length || !node.properties) continue;
+    for (const key of keys) {
+      const raw = node.properties[key];
+      if (typeof raw !== "string") continue;
+      try {
+        node.properties[key] = JSON.parse(raw);
+      } catch {
+        node.properties[key] = key === "mappings" ? [] : {};
+      }
+    }
+  }
+  return out;
+}
+
+function graphAfterLoad(graphData) {
+  if (!graphData || !graphData.nodes) return graphData;
+  for (const node of graphData.nodes) {
+    const keys = jsonFieldKeys(node.type);
+    if (!keys.length || !node.properties) continue;
+    for (const key of keys) {
+      const raw = node.properties[key];
+      if (raw !== null && typeof raw === "object") {
+        node.properties[key] = JSON.stringify(raw, null, 2);
+      }
+    }
+  }
+  return graphData;
+}
+
+/* ---------- State ---------- */
+
+let graph, canvas, canvasEl, workflowId;
+let selectedNode = null;
+let dirty = false;
+
+const els = {};
+
+function setStatus(html, { spinner = false } = {}) {
+  els.status.innerHTML = (spinner ? '<span class="spinner"></span>' : "") + (html || "");
+}
+
+function markDirty() {
+  if (dirty) return;
+  dirty = true;
+  renderDirty();
+}
+
+function renderDirty() {
+  if (dirty) setStatus('<span class="dirty-dot"></span> Unsaved changes');
+  else setStatus("");
+}
+
+/* ---------- Palette ---------- */
+
+function renderPalette() {
+  const groups = {};
+  for (const s of NODE_SCHEMAS) (groups[s.category] ||= []).push(s);
+
+  els.palette.innerHTML = Object.entries(groups).map(([category, items]) => `
+    <div class="palette-group">
+      <div class="palette-group-label">${escapeHtml(category)}</div>
+      ${items.map(s => `
+        <button class="palette-item" data-type="${escapeHtml(s.type)}" title="${escapeHtml(s.description)}">
+          <span class="swatch" style="background:${CATEGORY_COLORS[category]}"></span>
+          <span>${escapeHtml(s.title)}</span>
+        </button>
+      `).join("")}
+    </div>
+  `).join("");
+
+  els.palette.querySelectorAll(".palette-item").forEach(btn => {
+    btn.addEventListener("click", () => addNode(btn.dataset.type));
+  });
+}
+
+let addCount = 0;
+function addNode(type) {
+  const node = LiteGraph.createNode(type);
+  if (!node) return;
+  // Drop it near the middle of whatever the user is currently looking at,
+  // nudged each time so repeated adds don't stack into one pile.
+  const ds = canvas.ds;
+  const cx = (canvasEl.width * 0.5) / ds.scale - ds.offset[0];
+  const cy = (canvasEl.height * 0.5) / ds.scale - ds.offset[1];
+  const step = (addCount++ % 6) * 28;
+  node.pos = [cx - 95 + step, cy - 40 + step];
+  graph.add(node);
+
+  // canvas.selectNode() only updates LiteGraph's own selection — the
+  // onNodeSelected hook fires from the mouse-click path, not from here — so
+  // drive the inspector ourselves or a newly added node opens blank.
+  canvas.selectNode(node);
+  selectedNode = node;
+  renderInspector();
+
+  markDirty();
+  updateHint();
+}
+
+function deleteSelected() {
+  if (!selectedNode) return;
+  const node = selectedNode;
+  selectedNode = null;
+  canvas.deselectAllNodes();
+  graph.remove(node);
+  renderInspector();
+  markDirty();
+  updateHint();
+  canvas.setDirty(true, true);
+}
+
+function updateHint() {
+  els.hint.hidden = (graph._nodes || []).length > 0;
+}
+
+/* ---------- Inspector ---------- */
+
+function renderInspector() {
+  const node = selectedNode;
+  els.inspectorFoot.hidden = !node;
+
+  if (!node) {
+    els.inspector.innerHTML = `
+      <div class="empty-state" style="padding: var(--space-6) var(--space-2);">
+        <p style="margin:0">Select a node to configure it.</p>
+      </div>`;
+    return;
+  }
+
+  const schema = SCHEMA_BY_TYPE[node.type];
+  if (!schema) {
+    els.inspector.innerHTML = `<div class="banner">Unknown node type: ${escapeHtml(node.type)}</div>`;
+    return;
+  }
+
+  const io = (label, names) => names.length ? `
+    <div class="field">
+      <label>${label}</label>
+      <div class="io-list">${names.map(n => `<span class="io-chip">${escapeHtml(n)}</span>`).join("")}</div>
+    </div>` : "";
+
+  const webhookBlock = schema.showWebhookUrl ? `
+    <div class="field">
+      <label>Webhook URL</label>
+      <div class="copy-row">
+        <input type="text" id="webhook-url" readonly value="${escapeHtml(window.location.origin + "/api/webhook/" + workflowId)}">
+        <button class="btn btn-sm" id="copy-webhook">Copy</button>
+      </div>
+      <div class="field-hint">POST JSON here to trigger this workflow. Requires the workflow to be Active.</div>
+    </div>` : "";
+
+  els.inspector.innerHTML = `
+    <div class="inspector-title">${escapeHtml(schema.title)}</div>
+    <div class="inspector-type">${escapeHtml(schema.type)}</div>
+    <div class="inspector-desc">${escapeHtml(schema.description)}</div>
+    ${webhookBlock}
+    ${schema.fields.map(f => renderField(f, node.properties[f.key])).join("")}
+    ${io("Inputs", schema.inputs)}
+    ${io("Outputs", schema.outputs)}
+  `;
+
+  wireInspector(node, schema);
+}
+
+function renderField(f, value) {
+  const id = `f-${f.key}`;
+  const hint = f.hint ? `<div class="field-hint">${escapeHtml(f.hint)}</div>` : "";
+  const val = value === undefined || value === null ? "" : value;
+  let control;
+
+  if (f.type === "select") {
+    control = `<select id="${id}" data-key="${escapeHtml(f.key)}">${
+      f.options.map(o => `<option value="${escapeHtml(o)}"${o === val ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")
+    }</select>`;
+  } else if (f.type === "number") {
+    control = `<input type="number" id="${id}" data-key="${escapeHtml(f.key)}" value="${escapeHtml(String(val))}">`;
+  } else if (f.type === "json") {
+    control = `<textarea id="${id}" class="mono" data-key="${escapeHtml(f.key)}" data-json="1" rows="6" spellcheck="false">${escapeHtml(String(val))}</textarea>`;
+  } else if (f.type === "textarea") {
+    control = `<textarea id="${id}" data-key="${escapeHtml(f.key)}" rows="3">${escapeHtml(String(val))}</textarea>`;
+  } else {
+    control = `<input type="text" id="${id}" data-key="${escapeHtml(f.key)}" value="${escapeHtml(String(val))}"${
+      f.placeholder ? ` placeholder="${escapeHtml(f.placeholder)}"` : ""}>`;
+  }
+
+  return `<div class="field">
+    <label for="${id}">${escapeHtml(f.label)}</label>
+    ${control}
+    ${hint}
+    <div class="invalid-msg" id="${id}-err" hidden></div>
+  </div>`;
+}
+
+function wireInspector(node, schema) {
+  els.inspector.querySelectorAll("[data-key]").forEach(input => {
+    const key = input.dataset.key;
+    const isJson = input.dataset.json === "1";
+    const errEl = document.getElementById(`${input.id}-err`);
+
+    input.addEventListener("input", () => {
+      let value = input.value;
+      if (input.type === "number") value = value === "" ? "" : Number(value);
+
+      if (isJson) {
+        // Store the raw text either way — a half-typed object shouldn't be
+        // discarded — but flag it so it's obvious before you hit Save.
+        try {
+          JSON.parse(value);
+          input.classList.remove("invalid");
+          errEl.hidden = true;
+        } catch (err) {
+          input.classList.add("invalid");
+          errEl.textContent = "Invalid JSON — will be saved as empty.";
+          errEl.hidden = false;
         }
-        ManualTriggerNode.title = "Manual Trigger";
-        LiteGraph.registerNodeType("trigger/manual", ManualTriggerNode);
+      }
 
-        function WebhookTriggerNode() {
-            this.addOutput("payload", "");
-        }
-        WebhookTriggerNode.title = "Webhook Trigger";
-        LiteGraph.registerNodeType("trigger/webhook", WebhookTriggerNode);
+      node.properties[key] = value;
+      markDirty();
+    });
+  });
 
-        function ScheduleTriggerNode() {
-            this.addOutput("payload", "");
-            this.properties = { cron_expression: "*/15 * * * *" };
-            this.addWidget("text", "cron_expression", this.properties.cron_expression, function(v) {
-                this.properties.cron_expression = v;
-            }.bind(this));
-        }
-        ScheduleTriggerNode.title = "Schedule Trigger";
-        LiteGraph.registerNodeType("trigger/schedule", ScheduleTriggerNode);
+  const copyBtn = document.getElementById("copy-webhook");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async () => {
+      const url = document.getElementById("webhook-url").value;
+      try {
+        await navigator.clipboard.writeText(url);
+        copyBtn.textContent = "Copied";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+      } catch {
+        document.getElementById("webhook-url").select();
+      }
+    });
+  }
+}
 
-        function HTTPRequestNode() {
-            this.addInput("url", "");
-            this.addInput("body", "");
-            this.addOutput("status_code", "");
-            this.addOutput("headers", "");
-            this.addOutput("body", "");
-            this.properties = {
-                method: "GET",
-                url: "",
-                headers: "{}",
-                body: "{}",
-                timeout_seconds: 20
-            };
-            this.addWidget("combo", "method", this.properties.method, function(v) {
-                this.properties.method = v;
-            }.bind(this), { values: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
-            this.addWidget("text", "url", this.properties.url, function(v) {
-                this.properties.url = v;
-            }.bind(this));
-            this.addWidget("text", "headers", this.properties.headers, function(v) {
-                this.properties.headers = v;
-            }.bind(this));
-            this.addWidget("text", "body", this.properties.body, function(v) {
-                this.properties.body = v;
-            }.bind(this));
-            this.addWidget("number", "timeout_seconds", this.properties.timeout_seconds, function(v) {
-                this.properties.timeout_seconds = v;
-            }.bind(this));
-        }
-        HTTPRequestNode.title = "HTTP Request";
-        LiteGraph.registerNodeType("action/http_request", HTTPRequestNode);
+/* ---------- Canvas sizing ---------- */
 
-        function SupabaseQueryNode() {
-            this.addInput("data", "");
-            this.addOutput("data", "");
-            this.properties = {
-                table: "",
-                operation: "select",
-                filters: "{}",
-                data: "{}"
-            };
-            this.addWidget("text", "table", this.properties.table, function(v) {
-                this.properties.table = v;
-            }.bind(this));
-            this.addWidget("combo", "operation", this.properties.operation, function(v) {
-                this.properties.operation = v;
-            }.bind(this), { values: ["select", "insert", "update", "delete"] });
-            this.addWidget("text", "filters", this.properties.filters, function(v) {
-                this.properties.filters = v;
-            }.bind(this));
-            this.addWidget("text", "data", this.properties.data, function(v) {
-                this.properties.data = v;
-            }.bind(this));
-        }
-        SupabaseQueryNode.title = "Supabase Query";
-        LiteGraph.registerNodeType("action/supabase_query", SupabaseQueryNode);
+function resizeCanvas() {
+  const wrap = document.getElementById("canvas-wrap");
+  canvasEl.width = wrap.clientWidth;
+  canvasEl.height = wrap.clientHeight;
+  if (canvas) {
+    canvas.resize(canvasEl.width, canvasEl.height);
+    canvas.setDirty(true, true);
+  }
+}
 
-        function FalGenerateImageNode() {
-            this.addInput("prompt", "");
-            this.addOutput("result", "");
-            this.addOutput("image_url", "");
-            this.properties = {
-                model: "fal-ai/flux/dev",
-                input: '{"prompt": ""}'
-            };
-            this.addWidget("text", "model", this.properties.model, function(v) {
-                this.properties.model = v;
-            }.bind(this));
-            this.addWidget("text", "input", this.properties.input, function(v) {
-                this.properties.input = v;
-            }.bind(this));
-        }
-        FalGenerateImageNode.title = "fal.ai: Generate Image";
-        LiteGraph.registerNodeType("action/fal_generate_image", FalGenerateImageNode);
+/* Frame every node in view. LiteGraph's transform is
+   screen = (world + ds.offset) * ds.scale, so centering world point c means
+   offset = viewport/(2*scale) - c. */
+function fitToView() {
+  const nodes = graph._nodes || [];
+  if (!nodes.length) {
+    canvas.ds.scale = 1;
+    canvas.ds.offset = [0, 0];
+    canvas.setDirty(true, true);
+    return;
+  }
 
-        // This node pauses the workflow while training runs (can take minutes), and its eventual output shape depends entirely on what the fal.ai model returns — the "result" output slot is a best-effort passthrough, not a guaranteed exact-field match.
-        function FalTrainLoRANode() {
-            this.addOutput("result", "");
-            this.properties = {
-                model: "fal-ai/flux-lora-fast-training",
-                input: '{"images_data_url": "", "trigger_word": ""}'
-            };
-            this.addWidget("text", "model", this.properties.model, function(v) {
-                this.properties.model = v;
-            }.bind(this));
-            this.addWidget("text", "input", this.properties.input, function(v) {
-                this.properties.input = v;
-            }.bind(this));
-        }
-        FalTrainLoRANode.title = "fal.ai: Train LoRA";
-        LiteGraph.registerNodeType("action/fal_train_lora", FalTrainLoRANode);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    minX = Math.min(minX, n.pos[0]);
+    minY = Math.min(minY, n.pos[1] - LiteGraph.NODE_TITLE_HEIGHT);
+    maxX = Math.max(maxX, n.pos[0] + n.size[0]);
+    maxY = Math.max(maxY, n.pos[1] + n.size[1]);
+  }
 
-        function LLMPromptNode() {
-            this.addInput("prompt", "");
-            this.addOutput("text", "");
-            this.addOutput("raw", "");
-            this.properties = {
-                model: "deepseek/deepseek-v3.2",
-                system_prompt: "",
-                user_prompt: ""
-            };
-            this.addWidget("text", "model", this.properties.model, function(v) {
-                this.properties.model = v;
-            }.bind(this));
-            this.addWidget("text", "system_prompt", this.properties.system_prompt, function(v) {
-                this.properties.system_prompt = v;
-            }.bind(this));
-            this.addWidget("text", "user_prompt", this.properties.user_prompt, function(v) {
-                this.properties.user_prompt = v;
-            }.bind(this));
-        }
-        LLMPromptNode.title = "LLM Prompt";
-        LiteGraph.registerNodeType("action/llm_prompt", LLMPromptNode);
+  const pad = 70;
+  const w = canvasEl.width, h = canvasEl.height;
+  const scale = Math.min(w / (maxX - minX + pad * 2), h / (maxY - minY + pad * 2), 1.15);
+  canvas.ds.scale = scale;
+  canvas.ds.offset = [
+    w / (2 * scale) - (minX + maxX) / 2,
+    h / (2 * scale) - (minY + maxY) / 2,
+  ];
+  canvas.setDirty(true, true);
+}
 
-        function DelayNode() {
-            this.properties = { seconds: 300 };
-            this.addWidget("number", "seconds", this.properties.seconds, function(v) {
-                this.properties.seconds = v;
-            }.bind(this));
-        }
-        DelayNode.title = "Delay";
-        LiteGraph.registerNodeType("action/delay", DelayNode);
+/* ---------- Save / run ---------- */
 
-        function ConditionNode() {
-            this.addInput("value1", "");
-            this.addInput("value2", "");
-            this.addOutput("result", "");
-            this.properties = {
-                left: "{{value1}}",
-                operator: "eq",
-                right: "{{value2}}"
-            };
-            this.addWidget("text", "left", this.properties.left, function(v) {
-                this.properties.left = v;
-            }.bind(this));
-            this.addWidget("combo", "operator", this.properties.operator, function(v) {
-                this.properties.operator = v;
-            }.bind(this), { values: ["eq", "neq", "gt", "lt", "gte", "lte", "contains"] });
-            this.addWidget("text", "right", this.properties.right, function(v) {
-                this.properties.right = v;
-            }.bind(this));
-        }
-        ConditionNode.title = "Condition";
-        LiteGraph.registerNodeType("logic/condition", ConditionNode);
+async function saveWorkflow() {
+  const res = await apiFetch(`/api/workflows/${workflowId}`, {
+    method: "PUT",
+    body: {
+      name: els.name.value.trim() || "Untitled workflow",
+      graph_json: graphForSave(graph.serialize()),
+      is_active: els.active.checked,
+    },
+  });
+  if (res && res.error) throw new Error(res.error);
+  dirty = false;
+  return res;
+}
 
-        // Only the first 3 entries of the node's mappings config are individually wireable downstream in this v1.
-        function SetTransformNode() {
-            this.addInput("value1", "");
-            this.addInput("value2", "");
-            this.addOutput("out1", "");
-            this.addOutput("out2", "");
-            this.addOutput("out3", "");
-            this.properties = {
-                mappings: '[{"output_name": "out1", "source": "{{value1}}"}]'
-            };
-            this.addWidget("text", "mappings", this.properties.mappings, function(v) {
-                this.properties.mappings = v;
-            }.bind(this));
-        }
-        SetTransformNode.title = "Set / Transform";
-        LiteGraph.registerNodeType("data/set", SetTransformNode);
+async function onSave() {
+  els.save.disabled = true;
+  setStatus("Saving…", { spinner: true });
+  try {
+    await saveWorkflow();
+    setStatus("Saved");
+    setTimeout(() => { if (!dirty) setStatus(""); }, 2000);
+  } catch (err) {
+    setStatus(`<span style="color:var(--danger)">Save failed: ${escapeHtml(err.message)}</span>`);
+  } finally {
+    els.save.disabled = false;
+  }
+}
 
-        // Which node-type properties are JSON-string widgets that must become real
-        // objects/arrays before hitting the backend — the executors in api/_lib/nodes/
-        // expect ctx.config["headers"] etc. to already be a dict/list, not a raw string.
-        const JSON_CONFIG_FIELDS = {
-            "action/http_request": ["headers", "body"],
-            "action/supabase_query": ["filters", "data"],
-            "action/fal_generate_image": ["input"],
-            "action/fal_train_lora": ["input"],
-            "data/set": ["mappings"],
-        };
+async function onRun() {
+  els.run.disabled = true;
+  els.save.disabled = true;
+  try {
+    // Run executes what's persisted, so always flush the canvas first —
+    // otherwise you'd be running a stale version of what you're looking at.
+    setStatus("Saving…", { spinner: true });
+    await saveWorkflow();
 
-        function prepareGraphForSave(graphData) {
-            const prepared = JSON.parse(JSON.stringify(graphData));
-            for (const node of prepared.nodes || []) {
-                const fields = JSON_CONFIG_FIELDS[node.type];
-                if (!fields || !node.properties) continue;
-                for (const key of fields) {
-                    const raw = node.properties[key];
-                    if (typeof raw !== "string") continue;
-                    try {
-                        node.properties[key] = JSON.parse(raw);
-                    } catch (err) {
-                        node.properties[key] = key === "mappings" ? [] : {};
-                    }
-                }
-            }
-            return prepared;
-        }
+    setStatus("Running…", { spinner: true });
+    const res = await apiFetch(`/api/workflows/${workflowId}/run`, { method: "POST", body: {} });
+    if (res && res.error) throw new Error(res.error);
 
-        let graph, canvas, workflowId;
+    const ex = res.execution;
+    const label = ex.status === "pending_external" ? "waiting on external job" : ex.status;
+    setStatus(
+      `<span class="badge badge-${escapeHtml(ex.status)}">${escapeHtml(label)}</span>` +
+      ` <a href="/execution.html?id=${escapeHtml(ex.id)}">View run →</a>`
+    );
+  } catch (err) {
+    setStatus(`<span style="color:var(--danger)">Run failed: ${escapeHtml(err.message)}</span>`);
+  } finally {
+    els.run.disabled = false;
+    els.save.disabled = false;
+  }
+}
 
-        async function init() {
-            await requireAuth();
+/* ---------- Boot ---------- */
 
-            const params = new URLSearchParams(window.location.search);
-            workflowId = params.get("id");
-            if (!workflowId) {
-                document.body.innerHTML = '<div class="card" style="margin:2rem;padding:2rem;text-align:center"><h2>No workflow id provided.</h2><a href="/index.html">Go back</a></div>';
-                return;
-            }
+async function init() {
+  await requireAuth();
 
-            graph = new LGraph();
-            canvas = new LGraphCanvas("#graph-canvas", graph);
+  els.name = document.getElementById("name-input");
+  els.active = document.getElementById("active-toggle");
+  els.save = document.getElementById("save-btn");
+  els.run = document.getElementById("run-btn");
+  els.status = document.getElementById("status-msg");
+  els.palette = document.getElementById("palette-body");
+  els.inspector = document.getElementById("inspector-body");
+  els.inspectorFoot = document.getElementById("inspector-foot");
+  els.hint = document.getElementById("canvas-hint");
 
-            try {
-                const { workflow } = await apiFetch(`/api/workflows/${workflowId}`);
-                document.getElementById("name-input").value = workflow.name;
-                document.getElementById("active-toggle").checked = workflow.is_active;
-                if (workflow.graph_json && workflow.graph_json.nodes && workflow.graph_json.nodes.length) {
-                    graph.configure(workflow.graph_json);
-                }
-            } catch (err) {
-                console.error("Failed to load workflow", err);
-                document.getElementById("status-area").textContent = "Failed to load workflow.";
-                return;
-            }
+  workflowId = new URLSearchParams(window.location.search).get("id");
+  if (!workflowId) {
+    document.body.innerHTML =
+      '<div class="center-screen"><div class="card auth-card" style="text-align:center">' +
+      '<h2>No workflow selected</h2><p style="color:var(--text-dim);margin:var(--space-3) 0">' +
+      'This page needs a workflow id.</p>' +
+      '<a href="/index.html" class="btn btn-primary btn-block">Back to workflows</a></div></div>';
+    return;
+  }
 
-            graph.start();
-            setupCanvasResize();
-            setupEventListeners();
-        }
+  canvasEl = document.getElementById("graph-canvas");
+  graph = new LGraph();
+  canvas = new LGraphCanvas(canvasEl, graph);
+  canvas.background_image = null;
+  canvas.render_shadows = false;
+  canvas.always_render_background = false;
+  // No graph.start(): our nodes have no onExecute, so the execution loop would
+  // just burn CPU. LGraphCanvas runs its own render loop regardless.
 
-        function setupCanvasResize() {
-            const canvasEl = document.getElementById("graph-canvas");
-            const container = canvasEl.parentElement;
+  canvas.onNodeSelected = (node) => { selectedNode = node; renderInspector(); };
+  canvas.onNodeDeselected = () => { selectedNode = null; renderInspector(); };
+  canvas.onNodeMoved = () => markDirty();
 
-            function resizeCanvas() {
-                const width = container.clientWidth;
-                const height = container.clientHeight;
-                canvasEl.width = width;
-                canvasEl.height = height;
-                if (canvas) {
-                    canvas.resize();
-                }
-            }
+  // Several hooks rather than one: onAfterChange misses wiring and drags, so
+  // without these you could rearrange a graph and lose it on navigate.
+  graph.onNodeAdded = () => { markDirty(); updateHint(); };
+  graph.onNodeRemoved = () => { markDirty(); updateHint(); };
+  graph.onConnectionChange = () => markDirty();
+  graph.onAfterChange = () => { markDirty(); updateHint(); };
 
-            window.addEventListener("resize", resizeCanvas);
-            requestAnimationFrame(() => resizeCanvas());
-        }
+  renderPalette();
+  renderInspector();
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
 
-        function setupEventListeners() {
-            const saveBtn = document.getElementById("save-btn");
-            const runBtn = document.getElementById("run-btn");
-            const nameInput = document.getElementById("name-input");
-            const activeToggle = document.getElementById("active-toggle");
-            const statusArea = document.getElementById("status-area");
+  try {
+    const { workflow, error } = await apiFetch(`/api/workflows/${workflowId}`);
+    if (error) throw new Error(error);
+    els.name.value = workflow.name || "";
+    els.active.checked = !!workflow.is_active;
+    if (workflow.graph_json && (workflow.graph_json.nodes || []).length) {
+      graph.configure(graphAfterLoad(workflow.graph_json));
+      fitToView();
+    }
+  } catch (err) {
+    setStatus(`<span style="color:var(--danger)">Could not load workflow: ${escapeHtml(err.message)}</span>`);
+    return;
+  }
 
-            // Active toggle: state is only persisted on next "Save", not eagerly.
-            // No immediate API call on change — this is intentional.
+  // configure() fires onAfterChange; loading isn't an edit.
+  dirty = false;
+  renderDirty();
+  updateHint();
+  canvas.setDirty(true, true);
 
-            async function saveWorkflow() {
-                const graphData = prepareGraphForSave(graph.serialize());
-                await apiFetch(`/api/workflows/${workflowId}`, {
-                    method: "PUT",
-                    body: {
-                        name: nameInput.value,
-                        graph_json: graphData,
-                        is_active: activeToggle.checked
-                    }
-                });
-            }
+  els.save.addEventListener("click", onSave);
+  els.run.addEventListener("click", onRun);
+  els.name.addEventListener("input", markDirty);
+  els.active.addEventListener("change", markDirty);
 
-            saveBtn.addEventListener("click", async () => {
-                const originalText = saveBtn.textContent;
-                try {
-                    saveBtn.disabled = true;
-                    saveBtn.textContent = "Saving...";
-                    await saveWorkflow();
-                    statusArea.textContent = "Saved";
-                    setTimeout(() => {
-                        statusArea.textContent = "";
-                    }, 2000);
-                } catch (err) {
-                    console.error("Save failed", err);
-                    statusArea.textContent = "Save failed";
-                } finally {
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = originalText;
-                }
-            });
+  document.getElementById("fit-btn").addEventListener("click", fitToView);
 
-            runBtn.addEventListener("click", async () => {
-                const originalText = runBtn.textContent;
-                try {
-                    runBtn.disabled = true;
-                    // Run Now always reflects the current canvas, not a possibly-stale
-                    // saved version — the run endpoint executes whatever's persisted in
-                    // the DB, so save first.
-                    statusArea.textContent = "Saving...";
-                    await saveWorkflow();
-                    statusArea.textContent = "Running...";
-                    const { execution } = await apiFetch(`/api/workflows/${workflowId}/run`, {
-                        method: "POST",
-                        body: {}
-                    });
-                    const statusText = escapeHtml(execution.status);
-                    const id = escapeHtml(execution.id);
-                    statusArea.innerHTML = `${statusText} <a href="/execution.html?id=${id}">View details</a>`;
-                } catch (err) {
-                    console.error("Run failed", err);
-                    statusArea.textContent = "Run failed";
-                } finally {
-                    runBtn.disabled = false;
-                    runBtn.textContent = originalText;
-                }
-            });
-        }
+  document.getElementById("delete-node-btn").addEventListener("click", deleteSelected);
 
-        // Initialize when the page loads
-        document.addEventListener("DOMContentLoaded", init);
-    </script>
+  // Delete/Backspace removes the selected node — but never while the caret is
+  // in a form control, or typing in the inspector would nuke the node.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    if (!selectedNode) return;
+    e.preventDefault();
+    deleteSelected();
+  });
+
+  // Cmd/Ctrl+S saves, as in any real editor.
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      onSave();
+    }
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
 </body>
 </html>

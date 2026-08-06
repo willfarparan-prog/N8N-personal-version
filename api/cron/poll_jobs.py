@@ -83,7 +83,9 @@ class handler(http.server.BaseHTTPRequestHandler):
                                 workflow_graph=graph_json,
                                 secrets=get_node_secrets(),
                                 resume_node_id=node_id,
-                                resume_outputs={},
+                                # Delay has no output of its own — replay whatever fed
+                                # into it so downstream nodes still receive their data.
+                                resume_outputs=external_ref.get("passthrough") or {},
                             )
                             resumed_count += 1
                         # else: still waiting, skip
