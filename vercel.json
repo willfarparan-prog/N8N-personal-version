@@ -1,3 +1,30 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "builds": [
+    { "src": "api/session.py", "use": "@vercel/python" },
+    { "src": "api/auth/login.py", "use": "@vercel/python" },
+    { "src": "api/auth/logout.py", "use": "@vercel/python" },
+    { "src": "api/workflows/index.py", "use": "@vercel/python" },
+    { "src": "api/workflows/[id].py", "use": "@vercel/python" },
+    { "src": "api/workflows/[id]/run.py", "use": "@vercel/python" },
+    { "src": "api/webhook/[id].py", "use": "@vercel/python" },
+    { "src": "api/executions/[id].py", "use": "@vercel/python" },
+    { "src": "api/cron/poll_schedules.py", "use": "@vercel/python" },
+    { "src": "api/cron/poll_jobs.py", "use": "@vercel/python" },
+    { "src": "public/**/*", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/session", "dest": "/api/session.py" },
+    { "src": "/api/auth/login", "dest": "/api/auth/login.py" },
+    { "src": "/api/auth/logout", "dest": "/api/auth/logout.py" },
+    { "src": "/api/workflows/([^/]+)/run", "dest": "/api/workflows/[id]/run.py?id=$1" },
+    { "src": "/api/workflows/([^/]+)", "dest": "/api/workflows/[id].py?id=$1" },
+    { "src": "/api/workflows", "dest": "/api/workflows/index.py" },
+    { "src": "/api/webhook/([^/]+)", "dest": "/api/webhook/[id].py?id=$1" },
+    { "src": "/api/executions/([^/]+)", "dest": "/api/executions/[id].py?id=$1" },
+    { "src": "/api/cron/poll_schedules", "dest": "/api/cron/poll_schedules.py" },
+    { "src": "/api/cron/poll_jobs", "dest": "/api/cron/poll_jobs.py" },
+    { "src": "/", "dest": "/public/index.html" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ]
 }

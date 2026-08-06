@@ -46,7 +46,17 @@ def get_query_params(req) -> dict[str, str]:
 
 
 def get_path_param(req, pattern: str) -> str | None:
-    """Extract a single dynamic segment, e.g. get_path_param(req, r'/api/workflows/([^/]+)$')."""
+    """
+    Extract a single dynamic segment, e.g. get_path_param(req, r'/api/workflows/([^/]+)$').
+
+    Vercel's routing (via vercel.json's explicit `routes`, required because this project
+    uses `builds`) rewrites the request to the target function with the dynamic segment
+    passed as a `?id=...` query param rather than preserving the original path — so the
+    regex match against req.path will not fire in production. Fall back to the `id` query
+    param in that case; the regex path is kept for clarity/local reasoning and as a safety net.
+    """
     parsed = urlparse(req.path)
     match = re.match(pattern, parsed.path)
-    return match.group(1) if match else None
+    if match:
+        return match.group(1)
+    return get_query_params(req).get("id")
