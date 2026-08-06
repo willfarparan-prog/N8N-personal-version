@@ -7,21 +7,21 @@
 
 :root {
   /* Surfaces, darkest to lightest. `canvas` sits behind the node graph. */
-  --canvas: #08090c;
-  --bg: #0d0e12;
-  --surface: rgba(26, 27, 33, 0.84);
-  --surface-2: #202128;
-  --surface-3: #2a2c34;
-  --border: rgba(255, 255, 255, 0.105);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --canvas: #100d18;
+  --bg: #15101e;
+  --surface: rgba(34, 27, 46, 0.78);
+  --surface-2: #2a2137;
+  --surface-3: #382c48;
+  --border: rgba(224, 208, 255, 0.13);
+  --border-strong: rgba(232, 217, 255, 0.25);
 
-  --text: #f5f5f7;
-  --text-dim: #a4a5ad;
-  --text-faint: #73747d;
+  --text: #fcf8ff;
+  --text-dim: #b9afc6;
+  --text-faint: #897f98;
 
-  --accent: #8b7cff;
-  --accent-hover: #a195ff;
-  --accent-soft: rgba(139, 124, 255, 0.18);
+  --accent: #a770ff;
+  --accent-hover: #c29bff;
+  --accent-soft: rgba(167, 112, 255, 0.2);
 
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.14);
@@ -50,9 +50,9 @@
   --radius: 14px;
   --radius-lg: 20px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255,255,255,0.025);
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255,255,255,0.03);
-  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.44), inset 0 1px rgba(255,255,255,0.04);
+  --shadow-sm: 0 1px 2px rgba(8, 3, 15, 0.34), inset 0 1px rgba(255,255,255,0.05);
+  --shadow: 0 16px 38px rgba(8, 3, 15, 0.32), inset 0 1px rgba(255,255,255,0.06);
+  --shadow-lg: 0 28px 80px rgba(5, 2, 10, 0.52), inset 0 1px rgba(255,255,255,0.08);
 
   --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -64,7 +64,7 @@
 
 html, body {
   height: 100%;
-  background: var(--bg);
+  background: radial-gradient(circle at 90% -15%, rgba(207, 93, 180, .12), transparent 28rem), radial-gradient(circle at -12% 86%, rgba(82, 116, 255, .13), transparent 28rem), var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: var(--text-base);
@@ -114,8 +114,8 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 4px 18px rgba(139, 124, 255, 0.25); }
-.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 6px 22px rgba(139, 124, 255, 0.34); }
+.btn-primary { background: linear-gradient(105deg, #795cff 0%, #b65ded 52%, #ef787e 100%); border-color: rgba(224, 189, 255, .42); color: #fff; box-shadow: 0 5px 22px rgba(177, 80, 238, .28); }
+.btn-primary:hover { background: linear-gradient(105deg, #8a70ff 0%, #c86df5 52%, #fa898d 100%); border-color: rgba(255, 224, 244, .64); box-shadow: 0 8px 30px rgba(221, 89, 185, .34); }
 
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
 .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
@@ -129,6 +129,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 /* ---------- Form controls ---------- */
 
 input[type="text"],
+input[type="search"],
 input[type="password"],
 input[type="number"],
 textarea,
@@ -202,8 +203,8 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
   gap: var(--space-3);
   height: var(--toolbar-h);
   padding: 0 var(--space-5);
-  background: rgba(20, 21, 26, 0.78);
-  backdrop-filter: blur(18px) saturate(135%);
+  background: linear-gradient(90deg, rgba(35,26,52,.84), rgba(31,24,44,.76));
+  backdrop-filter: blur(22px) saturate(150%);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -224,8 +225,8 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
   width: 24px;
   height: 24px;
   border-radius: 8px;
-  background: conic-gradient(from 215deg, #7d70ff, #afa1ff, #5ee6d1, #7d70ff);
-  box-shadow: 0 3px 14px rgba(126, 112, 255, 0.36);
+  background: conic-gradient(from 225deg, #7557ff, #bc68f4, #fa9383, #52d8e8, #7557ff);
+  box-shadow: 0 3px 16px rgba(201, 91, 215, 0.42);
   flex-shrink: 0;
 }
 
@@ -238,7 +239,7 @@ input[type="checkbox"] { width: auto; accent-color: var(--accent); cursor: point
 }
 
 .card {
-  background: linear-gradient(145deg, rgba(34,35,43,0.88), rgba(22,23,29,0.86));
+  background: linear-gradient(145deg, rgba(54,42,70,0.88), rgba(29,23,40,0.9));
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: var(--space-5);
