@@ -7,21 +7,19 @@
 
 :root {
   /* Surfaces, darkest to lightest. `canvas` sits behind the node graph. */
-  --canvas: #100d18;
-  --bg: #15101e;
-  --surface: rgba(34, 27, 46, 0.78);
-  --surface-2: #2a2137;
-  --surface-3: #382c48;
-  --border: rgba(224, 208, 255, 0.13);
-  --border-strong: rgba(232, 217, 255, 0.25);
-
-  --text: #fcf8ff;
-  --text-dim: #b9afc6;
-  --text-faint: #897f98;
-
-  --accent: #a770ff;
-  --accent-hover: #c29bff;
-  --accent-soft: rgba(167, 112, 255, 0.2);
+  --canvas: #232326;
+  --bg: #1D1D1F;
+  --surface: rgba(44, 44, 46, 0.88);
+  --surface-2: #343438;
+  --surface-3: #48484d;
+  --border: rgba(255,255,255,0.14);
+  --border-strong: rgba(255,255,255,0.26);
+  --text: #F5F5F7;
+  --text-dim: #B8B8BD;
+  --text-faint: #8d8d94;
+  --accent: #1473E6;
+  --accent-hover: #4b92ed;
+  --accent-soft: rgba(20,115,230,0.2);
 
   --success: #22c55e;
   --success-soft: rgba(34, 197, 94, 0.14);
@@ -60,6 +58,15 @@
   --toolbar-h: 64px;
 }
 
+[data-theme="light"] {
+  --canvas: #EFEFF2; --bg: #F5F5F7; --surface: rgba(255,255,255,0.88);
+  --surface-2: #FFFFFF; --surface-3: #e1e1e6; --border: rgba(0,0,0,0.12);
+  --border-strong: rgba(0,0,0,0.22); --text: #1D1D1F; --text-dim: #64646A;
+  --text-faint: #77777d; --accent: #1473E6; --accent-hover: #0d5fc4;
+  --accent-soft: rgba(20,115,230,0.14); --shadow-sm: 0 1px 3px rgba(0,0,0,.1);
+  --shadow: 0 16px 38px rgba(0,0,0,.12); --shadow-lg: 0 28px 80px rgba(0,0,0,.18);
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
@@ -72,6 +79,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+[data-theme="light"] body { background: var(--bg); }
 
 h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
 h1 { font-size: var(--text-xl); }
@@ -152,6 +160,10 @@ input:focus, textarea:focus, select:focus {
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
 
 textarea { resize: vertical; min-height: 76px; line-height: 1.5; }
+.range-control, .color-control { display:flex; align-items:center; gap:var(--space-2); }
+.range-control input { flex:1; accent-color:var(--accent); }
+.range-control output { min-width:3ch; color:var(--text-dim); font-variant-numeric:tabular-nums; }
+.color-control input[type="color"] { width:44px; height:36px; padding:2px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--canvas); }
 
 /* JSON / expression fields — monospace so structure is readable while editing. */
 textarea.mono, input.mono { font-family: var(--font-mono); font-size: var(--text-xs); }

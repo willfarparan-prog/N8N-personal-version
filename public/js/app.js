@@ -19,6 +19,30 @@ async function apiFetch(path, options = {}) {
     return data;
 }
 
+function setTheme(theme) {
+    document.documentElement.dataset.theme = theme === "light" ? "light" : "graphite";
+    localStorage.setItem("flowforge-theme", document.documentElement.dataset.theme);
+}
+
+setTheme(localStorage.getItem("flowforge-theme") || "graphite");
+
+document.addEventListener("DOMContentLoaded", () => {
+    const toolbar = document.querySelector(".toolbar");
+    if (!toolbar) return;
+    const toggle = document.createElement("button");
+    toggle.className = "btn btn-ghost btn-sm";
+    toggle.type = "button";
+    const render = () => {
+        const light = document.documentElement.dataset.theme === "light";
+        toggle.textContent = light ? "Graphite" : "Light";
+        toggle.setAttribute("aria-label", `Switch to ${light ? "graphite" : "light"} theme`);
+        toggle.setAttribute("aria-pressed", String(light));
+    };
+    toggle.addEventListener("click", () => { setTheme(document.documentElement.dataset.theme === "light" ? "graphite" : "light"); render(); });
+    render();
+    toolbar.append(toggle);
+});
+
 async function requireAuth() {
     const session = await apiFetch("/api/session");
     if (!session.authed) {

@@ -11,15 +11,20 @@ _MODULES = [
     "trigger_manual",
     "trigger_webhook",
     "trigger_schedule",
+    "trigger_batch",
     "http_request",
     "supabase_query",
     "fal_generate_image",
     "fal_train_lora",
     "llm_prompt",
+    "openrouter_media",
     "delay",
     "condition",
     "set_transform",
     "google_drive",
+    "destinations",
+    "fal_universal",
+    "brand_kit",
 ]
 
 for _name in _MODULES:

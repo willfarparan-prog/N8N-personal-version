@@ -59,3 +59,24 @@ cd public && python3 -m http.server 8000
 ```
 
 API routes can't be run locally without the Vercel Python runtime; iterate via preview deployments instead.
+
+## Flow Forge Studio V2 rollout
+
+Apply `supabase/migrations/202608060001_flowforge_v2_foundation.sql` through the
+project's additive Supabase migration workflow before enabling V2 APIs. It creates
+the private buckets, queue RPC, publication ledger, and V2 tables used by the
+server routes.
+
+Set these server-only environment variables before a preview deployment:
+
+- `OPENROUTER_WEBHOOK_SECRET`
+- `DESTINATION_WEBHOOK_SIGNING_SECRET`
+- `BRAND_ANALYSIS_MODEL`
+- `FLOWFORGE_PUBLIC_BASE_URL`
+- `FLOWFORGE_STUDIO_V2`, `FLOWFORGE_PROVIDER_NODES_V2`, `FLOWFORGE_DESTINATIONS_V2`
+- `FLOWFORGE_PUBLISH_ENABLED`, `FLOWFORGE_BATCH_ENABLED`
+
+Before production, verify: a 50-row batch at concurrency three; fal signed
+callbacks and polling fallback; public rate/budget limits; a revoked and rotated
+publication token; seven-day cleanup preserving persistent assets; and both themes
+at 375, 768, 1024, and 1440px.

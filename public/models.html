@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brand Models — FlowForge</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .models-hero { max-width: 44rem; margin-bottom: var(--space-7); }
+  .models-hero h1 { margin: var(--space-2) 0 var(--space-3); font-size: clamp(2.25rem, 5vw, 3.8rem); letter-spacing: -.055em; line-height: 1.03; }
+  .models-hero p { color: var(--text-dim); font-size: var(--text-base); }
+  .notice { margin-bottom: var(--space-5); padding: var(--space-3); border: 1px solid rgba(255,192,105,.35); border-radius: var(--radius-sm); background: rgba(255,192,105,.09); color: #f6d49d; font-size: var(--text-sm); }
+  .notice[hidden] { display: none; }
+  .model-card { margin-bottom: var(--space-4); }
+  .model-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-3); }
+  .model-card-title { font-weight: 600; font-size: var(--text-lg); margin-bottom: var(--space-1); }
+  .model-card-trigger { color: var(--text-dim); font-size: var(--text-sm); }
+  .model-card-trigger code { font-family: var(--font-mono); background: var(--surface-2); padding: 0 var(--space-1); border-radius: var(--radius-sm); }
+  .model-card-meta { color: var(--text-dim); font-size: var(--text-xs); margin-bottom: var(--space-3); }
+  .model-card-error { color: var(--danger); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+  .model-card-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .model-edit-form { margin-bottom: var(--space-3); }
+  .model-edit-form .field { margin-bottom: var(--space-2); }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="/index.html" class="btn btn-ghost btn-sm">← Workflows</a>
+    <div class="toolbar-spacer"></div>
+    <span class="badge badge-active">Personal workspace</span>
+  </div>
+  <main class="page">
+    <section class="models-hero">
+      <div class="eyebrow">Trained assets</div>
+      <h1>Your brand models.</h1>
+      <p>LoRA models trained from your brand photos that workflows can render with for consistent, on-brand output.</p>
+    </section>
+    <div id="notice" class="notice" hidden role="status"></div>
+    <div id="modelList"></div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    let pollTimer = null;
+    let currentlyEditing = null;
+
+    function schedulePoll(hasTrainingRows) {
+      if (hasTrainingRows) {
+        if (!pollTimer) pollTimer = setInterval(load, 3000);
+      } else {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      }
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (pollTimer) clearInterval(pollTimer);
+    });
+
+    function renderModelList(models) {
+      const container = document.getElementById('modelList');
+      if (!models || models.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <h3>No brand models yet.</h3>
+            <p>Brand models are created by adding a "Train LoRA" node to a workflow and running it.</p>
+            <a class="btn btn-primary" href="/index.html">Go to workflows</a>
+          </div>
+        `;
+        schedulePoll(false);
+        return;
+      }
+
+      let hasTrainingRows = false;
+      container.innerHTML = models.map(model => {
+        if (model.status === 'training') hasTrainingRows = true;
+
+        const statusClass = {
+          'ready': 'badge-success',
+          'failed': 'badge-failed',
+          'training': 'badge-pending'
+        }[model.status] || '';
+
+        const statusText = {
+          'ready': 'Ready',
+          'failed': 'Failed',
+          'training': 'Training…'
+        }[model.status] || model.status;
+
+        const name = escapeHtml(model.name || 'Unnamed model');
+        const triggerWord = escapeHtml(model.trigger_word || '');
+        const error = escapeHtml(model.error || '');
+        const baseModel = escapeHtml(model.base_model || 'unknown');
+        const created = new Date(model.created_at).toLocaleString();
+        const isEditing = currentlyEditing === model.id;
+
+        let editSection;
+        if (isEditing) {
+          editSection = `
+            <div class="model-edit-form">
+              <div class="field">
+                <label for="edit-name-${model.id}">Model name</label>
+                <input type="text" id="edit-name-${model.id}" value="${name}" placeholder="Model name">
+              </div>
+              <div class="field">
+                <label for="edit-trigger-${model.id}">Trigger word</label>
+                <input type="text" id="edit-trigger-${model.id}" value="${triggerWord}" placeholder="Optional trigger word">
+              </div>
+              <div class="model-card-actions">
+                <button class="btn btn-sm btn-primary" onclick="saveModel('${model.id}')">Save</button>
+                <button class="btn btn-sm btn-ghost" onclick="cancelEdit()">Cancel</button>
+              </div>
+            </div>
+          `;
+        } else {
+          const triggerDisplay = triggerWord
+            ? `Trigger: <code>${triggerWord}</code>`
+            : 'No trigger word set';
+
+          editSection = `
+            <div>
+              <div class="model-card-title">${name}</div>
+              <div class="model-card-trigger">${triggerDisplay}</div>
+              <div class="model-card-actions">
+                <button class="btn btn-sm btn-ghost" onclick="startEdit('${model.id}')">Edit</button>
+              </div>
+            </div>
+          `;
+        }
+
+        let errorSection = '';
+        if (model.status === 'failed' && model.error) {
+          errorSection = `<div class="model-card-error">${error}</div>`;
+        }
+
+        let readySection = '';
+        if (model.status === 'ready' && model.weights_url) {
+          readySection = `
+            <div class="model-card-meta">
+              Ready to use in workflows with ID: <code>${model.id}</code>
+              <button class="btn btn-sm btn-ghost" onclick="copyId('${model.id}', this)">Copy ID</button>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="card model-card">
+            <div class="model-card-header">
+              <span class="badge ${statusClass}">${statusText}</span>
+            </div>
+            ${errorSection}
+            ${editSection}
+            <div class="model-card-meta">${baseModel} · trained ${created}</div>
+            ${readySection}
+            <div class="model-card-actions">
+              <button class="btn btn-sm btn-danger" onclick="deleteModel('${model.id}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      schedulePoll(hasTrainingRows);
+    }
+
+    async function load() {
+      const response = await apiFetch('/api/models');
+      const notice = document.getElementById('notice');
+
+      if (response.error) {
+        notice.textContent = response.error;
+        notice.hidden = false;
+        document.getElementById('modelList').innerHTML = '';
+        schedulePoll(false);
+        return;
+      }
+
+      notice.hidden = true;
+      renderModelList(response.models);
+    }
+
+    function startEdit(modelId) {
+      currentlyEditing = modelId;
+      load();
+    }
+
+    function cancelEdit() {
+      currentlyEditing = null;
+      load();
+    }
+
+    async function saveModel(modelId) {
+      const nameInput = document.getElementById(`edit-name-${modelId}`);
+      const triggerInput = document.getElementById(`edit-trigger-${modelId}`);
+
+      if (!nameInput || !triggerInput) return;
+
+      const updates = {
+        name: nameInput.value.trim(),
+        trigger_word: triggerInput.value.trim()
+      };
+
+      const response = await apiFetch(`/api/models/${modelId}`, {
+        method: 'PATCH',
+        body: updates
+      });
+
+      if (response.error) {
+        const notice = document.getElementById('notice');
+        notice.textContent = response.error;
+        notice.hidden = false;
+        return;
+      }
+
+      currentlyEditing = null;
+      load();
+    }
+
+    async function deleteModel(modelId) {
+      if (!confirm('Delete this brand model? This cannot be undone.')) return;
+
+      const response = await apiFetch(`/api/models/${modelId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.error) {
+        const notice = document.getElementById('notice');
+        notice.textContent = response.error;
+        notice.hidden = false;
+        return;
+      }
+
+      load();
+    }
+
+    async function copyId(id, button) {
+      try {
+        await navigator.clipboard.writeText(id);
+        const originalText = button.textContent;
+        button.textContent = 'Copied';
+        setTimeout(() => {
+          button.textContent = originalText;
+        }, 1500);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+
+    requireAuth().then(load).catch(() => {});
+  </script>
+</body>
+</html>

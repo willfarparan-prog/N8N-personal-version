@@ -226,9 +226,15 @@
   }
   .inspector-toggle { display: none; }
   @media (max-width: 760px) {
-    .toolbar { overflow-x: auto; }
+    /* Keep every editor action reachable on phones instead of letting a
+       desktop-width toolbar force the document horizontally. */
+    .toolbar { height: auto; min-width: 0; max-width: 100%; padding-block: var(--space-2); flex-wrap: wrap; align-content: center; overflow: visible; }
     .toolbar .status-msg { display: none; }
-    .name-input { width: 180px; }
+    .toolbar-divider, .toolbar-spacer { display: none; }
+    .workflow-identity { flex: 1 1 190px; }
+    .workflow-identity .name-input, .name-input { width: 100%; }
+    .toolbar-section { order: 3; flex: 1 0 100%; justify-content: flex-start; }
+    .toolbar .btn, .toolbar .checkbox-row { min-height: 44px; }
     .palette { width: 162px; }
     .inspector { position: absolute; z-index: 5; right: 0; width: min(320px, 88vw); height: 100%; box-shadow: var(--shadow-lg); transform: translateX(102%); transition: transform 180ms ease; }
     .inspector.is-open { transform: translateX(0); }
@@ -360,6 +366,11 @@ const NODE_SCHEMAS = [
     ],
   },
   {
+    type: "trigger/batch_input", title: "Batch Input", category: "Triggers",
+    description: "Starts one isolated child execution for each row of a signed CSV batch upload. Row columns are exposed as the payload output.",
+    inputs: [], outputs: ["payload"], fields: [],
+  },
+  {
     type: "action/http_request", title: "HTTP Request", category: "Actions",
     description: "Makes an outbound HTTP call. Any status code counts as success — branch on status_code downstream if you need to treat 4xx/5xx as failure.",
     inputs: ["url", "body"], outputs: ["status_code", "headers", "body"],
@@ -397,6 +408,10 @@ const NODE_SCHEMAS = [
         hint: "Any fal.ai model id, e.g. fal-ai/flux/dev." },
       { key: "input", label: "Model input", type: "json", default: '{"prompt": ""}',
         hint: "Passed straight to the model. A connected prompt input overrides the prompt field." },
+      { key: "lora_id", label: "Brand model (LoRA)", type: "lora_select", default: "",
+        hint: "Pick a trained brand model to render with its look and trigger word, or leave blank for the base model." },
+      { key: "lora_scale", label: "LoRA scale", type: "range", default: 1, min: 0, max: 2, step: 0.1,
+        hint: "How strongly the brand model influences the result. 1 is the model's default strength." },
     ],
   },
   {
@@ -404,10 +419,21 @@ const NODE_SCHEMAS = [
     description: "Submits a LoRA training job to fal.ai. Training takes minutes, so the workflow pauses here and resumes automatically when the job finishes.",
     inputs: [], outputs: ["result"],
     fields: [
+      { key: "name", label: "Name", type: "text", default: "",
+        hint: "A label so this trained model can be found and reused later, e.g. \"APEX Coach — Marcus v1\"." },
       { key: "model", label: "Training endpoint", type: "text", default: "fal-ai/flux-lora-fast-training" },
       { key: "input", label: "Training input", type: "json",
         default: '{\n  "images_data_url": "",\n  "trigger_word": ""\n}',
         hint: "images_data_url should point to a zip of your training images." },
+    ],
+  },
+  {
+    type: "action/fal_universal_media", title: "fal Universal Media", category: "AI",
+    description: "Queues any fal endpoint discovered from the live catalog; provider options are sent as advanced input.",
+    inputs: ["prompt", "artifacts"], outputs: ["artifacts", "raw"],
+    fields: [
+      { key: "endpoint", label: "fal endpoint", type: "text", default: "fal-ai/flux/dev" },
+      { key: "input", label: "Advanced endpoint input", type: "json", default: "{}" },
     ],
   },
   {
@@ -421,6 +447,73 @@ const NODE_SCHEMAS = [
       { key: "user_prompt", label: "User prompt", type: "textarea", default: "",
         hint: "A connected prompt input replaces this entirely." },
     ],
+  },
+  {
+    type: "action/openrouter_text", title: "OpenRouter Text", category: "AI",
+    description: "Generates text or structured JSON with a live OpenRouter model.",
+    inputs: ["prompt"], outputs: ["text", "json", "artifacts", "raw"],
+    fields: [
+      { key: "model", label: "Model", type: "text", default: "deepseek/deepseek-v3.2" },
+      { key: "system_prompt", label: "System prompt", type: "textarea", default: "" },
+      { key: "user_prompt", label: "Prompt", type: "textarea", default: "" },
+      { key: "temperature", label: "Temperature", type: "range", default: 0.7, min: 0, max: 2, step: 0.1 },
+      { key: "max_tokens", label: "Maximum output", type: "range", default: 1024, min: 64, max: 4096, step: 64 },
+      { key: "response_format", label: "Response format", type: "select", default: "text", options: ["text", "json_object", "json_schema"] },
+      { key: "json_schema", label: "JSON schema", type: "json", default: "{}" },
+    ],
+  },
+  {
+    type: "action/openrouter_image", title: "OpenRouter Image", category: "AI",
+    description: "Generates and archives images using a capability-selected OpenRouter image model.",
+    inputs: ["prompt", "artifacts", "reference_artifacts"], outputs: ["artifacts", "artifact", "image_url", "raw"],
+    fields: [
+      { key: "model", label: "Model", type: "text", default: "openai/gpt-image-1" },
+      { key: "prompt", label: "Prompt", type: "textarea", default: "" },
+      { key: "aspect_ratio", label: "Aspect ratio", type: "select", default: "1:1", options: ["1:1", "16:9", "9:16", "4:3", "3:4"] },
+      { key: "resolution", label: "Resolution", type: "select", default: "1K", options: ["512", "1K", "2K", "4K"] },
+      { key: "n", label: "Images", type: "range", default: 1, min: 1, max: 4, step: 1 },
+      { key: "quality", label: "Quality", type: "select", default: "auto", options: ["auto", "low", "medium", "high"] },
+      { key: "output_format", label: "Format", type: "select", default: "png", options: ["png", "jpeg", "webp"] },
+      { key: "background", label: "Background", type: "select", default: "auto", options: ["auto", "transparent", "opaque"] },
+      { key: "seed", label: "Seed", type: "number", default: "" },
+    ],
+  },
+  {
+    type: "action/openrouter_video", title: "OpenRouter Video", category: "AI",
+    description: "Submits an asynchronous OpenRouter video job and resumes on verified callback or polling.",
+    inputs: ["prompt", "first_frame", "last_frame", "artifacts", "reference_artifacts"], outputs: ["artifacts", "artifact", "video_url", "raw"],
+    fields: [
+      { key: "model", label: "Model", type: "text", default: "google/veo-3.1" },
+      { key: "prompt", label: "Prompt", type: "textarea", default: "" },
+      { key: "duration", label: "Duration (seconds)", type: "number", default: 5 },
+      { key: "resolution", label: "Resolution", type: "select", default: "720p", options: ["480p", "720p", "1080p", "2K"] },
+      { key: "aspect_ratio", label: "Aspect ratio", type: "select", default: "16:9", options: ["16:9", "9:16", "1:1"] },
+      { key: "generate_audio", label: "Generate audio", type: "checkbox", default: true },
+      { key: "seed", label: "Seed", type: "number", default: "" },
+    ],
+  },
+  {
+    type: "data/brand_kit", title: "Brand Kit", category: "Data",
+    description: "Loads a reusable versioned visual profile and its private reference artifacts.",
+    inputs: [], outputs: ["style_profile", "prompt_prefix", "negative_prompt", "reference_artifacts"],
+    fields: [{ key: "brand_kit_id", label: "Brand Kit ID", type: "text", default: "" }],
+  },
+  {
+    type: "destination/capsule_result", title: "Capsule Result", category: "Actions",
+    description: "Defines the normalized result shown to Capsule operators and public visitors.",
+    inputs: ["artifacts", "text", "payload"], outputs: ["artifacts", "text", "payload"],
+    fields: [{ key: "display_title", label: "Display title", type: "text", default: "Result" }, { key: "download_enabled", label: "Downloads enabled", type: "checkbox", default: true }],
+  },
+  {
+    type: "destination/webhook", title: "Webhook Destination", category: "Actions",
+    description: "Delivers a signed Flow Forge envelope to a public HTTPS endpoint.",
+    inputs: ["artifacts", "text", "payload"], outputs: ["status_code", "response"],
+    fields: [{ key: "url", label: "Webhook URL", type: "text", default: "", placeholder: "https://example.com/hook" }],
+  },
+  {
+    type: "destination/storage", title: "Flow Forge Storage", category: "Actions",
+    description: "Makes incoming artifacts persistent in private Flow Forge Storage.",
+    inputs: ["artifacts"], outputs: ["artifacts"], fields: [],
   },
   {
     type: "action/delay", title: "Delay", category: "Actions",
@@ -495,6 +588,7 @@ const NODE_GLYPHS = {
   "trigger/manual": "bolt",
   "trigger/webhook": "webhook",
   "trigger/schedule": "clock",
+  "trigger/batch_input": "layers",
   "action/http_request": "globe",
   "action/supabase_query": "database",
   "action/fal_generate_image": "sparkles",
@@ -954,12 +1048,20 @@ function renderField(f, value, node) {
   const val = value === undefined || value === null ? "" : value;
   let control;
 
-  if (f.type === "select") {
+  if (f.type === "lora_select") {
+    control = `<select id="${id}" data-key="${escapeHtml(f.key)}"><option value="">Base model (no brand LoRA)</option></select>`;
+  } else if (f.type === "select") {
     control = `<select id="${id}" data-key="${escapeHtml(f.key)}">${
       f.options.map(o => `<option value="${escapeHtml(o)}"${o === val ? " selected" : ""}>${escapeHtml(o)}</option>`).join("")
     }</select>`;
   } else if (f.type === "number") {
     control = `<input type="number" id="${id}" data-key="${escapeHtml(f.key)}" value="${escapeHtml(String(val))}">`;
+  } else if (f.type === "range") {
+    control = `<div class="range-control"><input type="range" id="${id}" data-key="${escapeHtml(f.key)}" min="${f.min ?? 0}" max="${f.max ?? 100}" step="${f.step ?? 1}" value="${escapeHtml(String(val))}"><output for="${id}">${escapeHtml(String(val))}</output></div>`;
+  } else if (f.type === "checkbox") {
+    control = `<label class="checkbox-row"><input type="checkbox" id="${id}" data-key="${escapeHtml(f.key)}"${val ? " checked" : ""}><span>${escapeHtml(f.onLabel || "Enabled")}</span></label>`;
+  } else if (f.type === "color") {
+    control = `<div class="color-control"><input type="color" id="${id}" data-key="${escapeHtml(f.key)}" value="${escapeHtml(String(val || "#1473E6"))}"><input type="text" data-key="${escapeHtml(f.key)}" value="${escapeHtml(String(val || "#1473E6"))}" aria-label="${escapeHtml(f.label)} hex value"></div>`;
   } else if (f.type === "json") {
     control = `<textarea id="${id}" class="mono" data-key="${escapeHtml(f.key)}" data-json="1" rows="6" spellcheck="false">${escapeHtml(String(val))}</textarea>`;
   } else if (f.type === "textarea") {
@@ -979,14 +1081,17 @@ function renderField(f, value, node) {
 }
 
 function wireInspector(node, schema) {
+  hydrateProviderPicker(node);
+  hydrateLoraPicker(node);
   els.inspector.querySelectorAll("[data-key]").forEach(input => {
     const key = input.dataset.key;
     const isJson = input.dataset.json === "1";
     const errEl = document.getElementById(`${input.id}-err`);
 
     input.addEventListener("input", () => {
-      let value = input.value;
+      let value = input.type === "checkbox" ? input.checked : input.value;
       if (input.type === "number") value = value === "" ? "" : Number(value);
+      if (input.type === "range") { value = Number(value); input.parentElement.querySelector("output").value = value; input.parentElement.querySelector("output").textContent = value; }
 
       if (isJson) {
         // Store the raw text either way — a half-typed object shouldn't be
@@ -1027,6 +1132,54 @@ function wireInspector(node, schema) {
       }
     });
   }
+}
+
+async function hydrateProviderPicker(node) {
+  const isOpenRouter = node.type === "action/openrouter_text" || node.type === "action/openrouter_image" || node.type === "action/openrouter_video";
+  const key = isOpenRouter ? "model" : node.type === "action/fal_universal_media" ? "endpoint" : null;
+  if (!key) return;
+  const input = els.inspector.querySelector(`[data-key="${key}"]`);
+  if (!input || input.tagName !== "INPUT") return;
+  const provider = isOpenRouter ? "openrouter" : "fal";
+  const modality = node.type.endsWith("_image") ? "image" : node.type.endsWith("_video") ? "video" : "";
+  const listId = `provider-models-${provider}-${modality || "all"}`;
+  input.setAttribute("list", listId);
+  const list = document.createElement("datalist"); list.id = listId;
+  input.after(list);
+  try {
+    const response = await apiFetch(`/api/providers/${provider}/models${modality ? `?modality=${encodeURIComponent(modality)}` : ""}`);
+    const models = response && response.models || [];
+    models.forEach(row => {
+      const option = document.createElement("option");
+      option.value = row.model_slug || row.endpoint_id || "";
+      const cap = row.capabilities_json || {};
+      option.label = [row.modality, cap.architecture && (cap.architecture.output_modalities || []).join(",")].filter(Boolean).join(" · ");
+      if (option.value) list.append(option);
+    });
+    if (!models.length) input.setAttribute("aria-description", "No compatible models are currently available.");
+  } catch {
+    // Manual entry remains available when catalog refresh is temporarily down.
+  }
+}
+
+async function hydrateLoraPicker(node) {
+  if (node.type !== "action/fal_generate_image") return;
+  const select = els.inspector.querySelector('[data-key="lora_id"]');
+  if (!select || select.tagName !== "SELECT") return;
+  const savedValue = node.properties.lora_id || "";
+  try {
+    const response = await apiFetch("/api/models");
+    const models = (response && response.models || []).filter(m => m.status === "ready");
+    models.forEach(model => {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.trigger_word ? `${model.name} — ${model.trigger_word}` : model.name;
+      select.append(option);
+    });
+  } catch {
+    // Base model remains selectable when the models catalog is temporarily down.
+  }
+  select.value = savedValue;
 }
 
 /* ---------- Canvas sizing, HiDPI, and zoom ----------

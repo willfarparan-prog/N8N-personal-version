@@ -5,7 +5,7 @@ understands graph traversal — node executors never see the graph, only their o
 resolved inputs/config.
 
 Long-running external jobs (e.g. a fal.ai training run) are handled by a node executor
-returning NodeResult(status="pending_external", external_ref={...}). run_execution then
+returning NodeResult(status="waiting_provider", external_ref={...}). run_execution then
 stops and persists that state; api/cron/poll_jobs.py later resumes the walk via
 resume_execution() once the external job finishes. This avoids needing a long-lived
 server — everything after the first pending node happens across separate, short
@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from api._lib import nodes  # noqa: F401  (import for its side effect: populates NODE_REGISTRY)
 from api._lib.nodes.base import NODE_REGISTRY, ExecutionContext, NodeResult
+from api._lib.graph import GraphValidationError, build_graph_index as _build_graph_index, topo_order as _topo_order
 from api._lib.supabase_client import get_client
 
 TRIGGER_PREFIX = "trigger/"
@@ -23,37 +24,6 @@ TRIGGER_PREFIX = "trigger/"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _build_graph_index(graph_json: dict):
-    nodes_by_id = {n["id"]: n for n in graph_json.get("nodes", [])}
-    incoming: dict[int, list[tuple[int, int, int]]] = {nid: [] for nid in nodes_by_id}
-    for link in graph_json.get("links", []):
-        _link_id, origin_id, origin_slot, target_id, target_slot, _type = link
-        incoming.setdefault(target_id, []).append((origin_id, origin_slot, target_slot))
-    return nodes_by_id, incoming
-
-
-def _topo_order(nodes_by_id: dict, incoming: dict, start_id: int) -> list[int]:
-    """Order of nodes reachable forward from start_id (BFS is enough: this graph shape is a DAG, one input port per producer feeding it)."""
-    outgoing: dict[int, list[int]] = {nid: [] for nid in nodes_by_id}
-    for target_id, edges in incoming.items():
-        for origin_id, _os, _ts in edges:
-            outgoing.setdefault(origin_id, []).append(target_id)
-
-    order: list[int] = []
-    visited: set[int] = set()
-    queue = [start_id]
-    while queue:
-        nid = queue.pop(0)
-        if nid in visited or nid not in nodes_by_id:
-            continue
-        visited.add(nid)
-        order.append(nid)
-        for nxt in outgoing.get(nid, []):
-            if nxt not in visited:
-                queue.append(nxt)
-    return order
 
 
 def _resolve_inputs(node: dict, incoming: dict, nodes_by_id: dict, node_outputs: dict[int, dict]) -> dict[str, Any]:
@@ -111,8 +81,13 @@ def run_execution(
             return
         start_node_id = trigger["id"]
 
+    try:
+        order = _topo_order(nodes_by_id, incoming, start_node_id)
+    except GraphValidationError as exc:
+        _fail_execution(sb, execution_id, str(exc))
+        return
     sb.table("executions").update({"status": "running"}).eq("id", execution_id).execute()
-    _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_outputs or {})
+    _walk(sb, execution_id, nodes_by_id, incoming, order, secrets, seed_outputs or {})
 
 
 def resume_execution(
@@ -144,14 +119,19 @@ def resume_execution(
     node_outputs: dict[int, dict] = {int(row["node_id"]): (row["output_json"] or {}) for row in prior_logs.data}
     node_outputs[resume_node_id] = resume_outputs
 
+    try:
+        order = _topo_order(nodes_by_id, incoming, resume_node_id)
+    except GraphValidationError as exc:
+        _fail_execution(sb, execution_id, str(exc))
+        return
     sb.table("executions").update({"status": "running"}).eq("id", execution_id).execute()
-    _walk(sb, execution_id, nodes_by_id, incoming, resume_node_id, secrets, node_outputs, skip_ids={resume_node_id})
+    _walk(sb, execution_id, nodes_by_id, incoming, order, secrets, node_outputs, skip_ids={resume_node_id})
 
 
-def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_outputs, skip_ids: Optional[set[int]] = None):
+def _walk(sb, execution_id, nodes_by_id, incoming, order, secrets, seed_outputs, skip_ids: Optional[set[int]] = None):
     skip_ids = skip_ids or set()
-    order = _topo_order(nodes_by_id, incoming, start_node_id)
     node_outputs: dict[int, dict] = dict(seed_outputs)
+    actual_cost = 0.0
 
     for nid in order:
         if nid in skip_ids:
@@ -159,7 +139,7 @@ def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_
         node = nodes_by_id[nid]
         node_type = node.get("type", "")
 
-        if node_type.startswith(TRIGGER_PREFIX) and nid == start_node_id and nid not in node_outputs:
+        if node_type.startswith(TRIGGER_PREFIX) and nid not in node_outputs:
             node_outputs[nid] = seed_outputs.get(nid, {})
             continue
 
@@ -170,7 +150,7 @@ def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_
 
         inputs = _resolve_inputs(node, incoming, nodes_by_id, node_outputs)
         config = node.get("properties", {}) or {}
-        log_id = _start_log(sb, execution_id, node)
+        log_id = _start_log(sb, execution_id, node, inputs)
         ctx = ExecutionContext(
             execution_id=execution_id, node_id=str(nid), config=config,
             inputs=inputs, secrets=secrets, supabase=sb,
@@ -182,41 +162,64 @@ def _walk(sb, execution_id, nodes_by_id, incoming, start_node_id, secrets, seed_
             result = NodeResult(status="failed", error=f"{type(exc).__name__}: {exc}")
 
         _finish_log(sb, log_id, result)
+        try:
+            actual_cost += float((result.usage or {}).get("cost_usd") or 0)
+        except (TypeError, ValueError):
+            pass
 
         if result.status == "failed":
             _fail_execution(sb, execution_id, result.error or f"Node {nid} failed")
             return
 
-        if result.status == "pending_external":
+        if result.status == "waiting_provider":
+            # Keep the persisted status compatible with the existing polling
+            # route until its schema migration introduces waiting_provider.
             sb.table("executions").update({"status": "pending_external"}).eq("id", execution_id).execute()
             sb.table("execution_logs").update({
                 "output_json": {"external_ref": result.external_ref},
             }).eq("id", log_id).execute()
             return  # api/cron/poll_jobs.py resumes this later via resume_execution()
 
-        node_outputs[nid] = result.outputs
+        resolved_outputs = dict(result.outputs)
+        # Nodes can publish provider-neutral artifacts without every existing
+        # LiteGraph definition needing a new output slot immediately.
+        if result.artifacts and "artifacts" not in resolved_outputs:
+            resolved_outputs["artifacts"] = result.artifacts
+        node_outputs[nid] = resolved_outputs
 
+    terminal_ids = [
+        nid for nid in order
+        if not any(origin == nid and target in order for target, edges in incoming.items() for origin, _os, _ts in edges)
+    ]
+    terminal_outputs = {str(nid): node_outputs.get(nid, {}) for nid in terminal_ids}
     sb.table("executions").update({
         "status": "success",
-        "output_json": node_outputs.get(order[-1], {}) if order else {},
+        "output_json": (terminal_outputs.get(str(terminal_ids[0]), {}) if len(terminal_ids) == 1 else {"terminal_outputs": terminal_outputs}),
+        "actual_cost_usd": actual_cost,
         "finished_at": _now(),
     }).eq("id", execution_id).execute()
 
 
-def _start_log(sb, execution_id, node) -> str:
+def _start_log(sb, execution_id, node, resolved_inputs: dict[str, Any]) -> str:
     row = sb.table("execution_logs").insert({
         "execution_id": execution_id,
         "node_id": str(node["id"]),
         "node_type": node.get("type", ""),
         "status": "running",
+        "input_json": resolved_inputs,
     }).execute()
     return row.data[0]["id"]
 
 
 def _finish_log(sb, log_id, result: NodeResult) -> None:
     sb.table("execution_logs").update({
-        "status": result.status,
+        # The V2 migration may update the constraint, but deployed V1 logs use
+        # pending_external. Keep them readable during the compatibility window.
+        "status": "pending_external" if result.status == "waiting_provider" else result.status,
         "output_json": result.outputs,
+        "artifacts_json": result.artifacts,
+        "usage_json": result.usage,
+        "external_ref": result.external_ref,
         "error": result.error,
         "finished_at": _now(),
     }).eq("id", log_id).execute()

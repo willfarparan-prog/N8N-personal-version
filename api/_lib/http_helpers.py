@@ -3,6 +3,7 @@ Shared request/response helpers for Vercel's Python runtime, which expects a
 BaseHTTPRequestHandler subclass named `handler` in each api/*.py file (no framework).
 Every API route in this project should use read_json_body/send_json/get_cookies for consistency.
 """
+from __future__ import annotations
 import json
 import re
 from urllib.parse import urlparse, parse_qs

@@ -25,6 +25,13 @@ def run(ctx: ExecutionContext) -> NodeResult:
             error="Missing 'model' in config"
         )
 
+    name: str | None = ctx.config.get("name")
+    if not name:
+        return NodeResult(
+            status="failed",
+            error="Missing 'name' in config"
+        )
+
     # Prepare input payload
     payload: dict[str, Any] = ctx.config.get("input", {})
 
@@ -52,6 +59,21 @@ def run(ctx: ExecutionContext) -> NodeResult:
                     error=f"Invalid JSON response: {json_err}"
                 )
 
+            trained_lora_id = None
+            try:
+                insert_result = ctx.supabase.table("trained_loras").insert({
+                    "name": name,
+                    "trigger_word": payload.get("trigger_word", ""),
+                    "status": "training",
+                    "source_execution_id": ctx.execution_id,
+                    "training_input": payload
+                }).execute()
+                trained_lora_id = insert_result.data[0]["id"]
+            except Exception:
+                # Proceed even if DB insert fails; the fal job was already
+                # submitted successfully and shouldn't be abandoned.
+                pass
+
             return NodeResult(
                 status="pending_external",
                 external_ref={
@@ -60,6 +82,7 @@ def run(ctx: ExecutionContext) -> NodeResult:
                     "request_id": result_json.get("request_id"),
                     "status_url": result_json.get("status_url"),
                     "response_url": result_json.get("response_url"),
+                    "trained_lora_id": trained_lora_id,
                 }
             )
         else:

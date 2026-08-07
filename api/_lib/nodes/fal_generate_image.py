@@ -25,6 +25,37 @@ def run(ctx: ExecutionContext) -> NodeResult:
             error="Missing 'model' in config"
         )
 
+    # LoRA resolution logic
+    lora_id: str | None = ctx.config.get("lora_id")
+    lora_url: str | None = ctx.config.get("lora_url")
+    lora_scale: float = ctx.config.get("lora_scale", 1.0)
+    trigger_word: str | None = ctx.config.get("trigger_word")
+    resolved_lora_url: str | None = lora_url
+    resolved_trigger_word: str | None = trigger_word
+
+    if lora_id:
+        try:
+            result = ctx.supabase.table("trained_loras").select("*").eq("id", lora_id).single().execute()
+            row = result.data
+            if row["status"] != "ready":
+                return NodeResult(
+                    status="failed",
+                    error=f"LoRA model '{row.get('name', lora_id)}' is not ready (status: {row['status']})"
+                )
+            resolved_lora_url = row["weights_url"]
+            if resolved_trigger_word is None:
+                resolved_trigger_word = row.get("trigger_word") or None
+        except Exception as exc:
+            return NodeResult(
+                status="failed",
+                error=f"Could not resolve lora_id '{lora_id}': {exc}"
+            )
+        if not resolved_lora_url:
+            return NodeResult(
+                status="failed",
+                error=f"LoRA model '{lora_id}' has no weights_url despite ready status"
+            )
+
     # Prepare input payload
     input_config: dict[str, Any] = ctx.config.get("input", {})
     # Work on a copy to avoid mutating ctx.config
@@ -33,6 +64,16 @@ def run(ctx: ExecutionContext) -> NodeResult:
     # Override prompt from upstream input if present
     if "prompt" in ctx.inputs:
         payload["prompt"] = ctx.inputs["prompt"]
+
+    if resolved_lora_url:
+        payload["loras"] = [{"path": resolved_lora_url, "scale": lora_scale}]
+        if resolved_trigger_word and payload.get("prompt"):
+            prompt = payload["prompt"]
+            if resolved_trigger_word.lower() not in prompt.lower():
+                payload["prompt"] = f"{resolved_trigger_word}, {prompt}"
+
+    if resolved_lora_url and model == "fal-ai/flux/dev":
+        model = "fal-ai/flux-lora"
 
     # Make request
     url: str = f"https://fal.run/{model}"

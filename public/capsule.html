@@ -53,6 +53,9 @@
     function fieldControl(control, value) {
       const id = `control-${control.nodeId}-${control.key}`;
       const safeValue = value == null ? '' : value;
+      if (control.type === 'lora_select') {
+        return `<select id="${id}" data-node="${escape(control.nodeId)}" data-key="${escape(control.key)}" data-lora-select="1"><option value="">Base model (no brand LoRA)</option></select>`;
+      }
       if (control.type === 'select') {
         return `<select id="${id}" data-node="${escape(control.nodeId)}" data-key="${escape(control.key)}">${(control.options || []).map(option => `<option value="${escape(option)}"${option === safeValue ? ' selected' : ''}>${escape(option)}</option>`).join('')}</select>`;
       }
@@ -88,6 +91,32 @@
           <div class="capsule-result" id="capsule-result" hidden></div>
         </form>`;
       document.getElementById('capsule-form').addEventListener('submit', runCapsule);
+      hydrateLoraSelects();
+    }
+
+    async function hydrateLoraSelects() {
+      const selects = document.querySelectorAll('select[data-lora-select="1"]');
+      if (!selects.length) return;
+      let models = [];
+      try {
+        const response = await apiFetch('/api/models');
+        models = (response && response.models || []).filter(m => m.status === 'ready');
+      } catch {
+        return;
+      }
+      selects.forEach(select => {
+        const nodeId = select.dataset.node;
+        const key = select.dataset.key;
+        const control = capsule.controls.find(c => String(c.nodeId) === String(nodeId) && c.key === key);
+        const savedValue = control ? currentValue(control) : '';
+        models.forEach(model => {
+          const option = document.createElement('option');
+          option.value = model.id;
+          option.textContent = model.trigger_word ? `${model.name} — ${model.trigger_word}` : model.name;
+          select.append(option);
+        });
+        select.value = savedValue || '';
+      });
     }
 
     async function runCapsule(event) {

@@ -1,4 +1,5 @@
 """Single-shared-password auth: sign/verify a session cookie. No DB, no user accounts."""
+from __future__ import annotations
 import hmac
 import os
 

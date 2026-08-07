@@ -16,8 +16,10 @@ import http.server
 from api._lib.auth import check_cron_secret
 from api._lib.http_helpers import send_json
 from api._lib.supabase_client import get_client
-from api._lib.engine import resume_execution
+from api._lib.engine import resume_execution, run_execution
 from api._lib.secrets import get_node_secrets
+from api._lib.job_queue import claim_jobs, complete_job, retry_or_fail_job
+from api.provider_events import complete_openrouter_video
 
 
 class handler(http.server.BaseHTTPRequestHandler):
@@ -38,6 +40,36 @@ class handler(http.server.BaseHTTPRequestHandler):
 
             resumed_count = 0
             errors = []
+
+            # Drain a bounded number of application-owned jobs first. A batch
+            # can therefore never monopolize a serverless invocation, and the
+            # SQL claim function is the only place a lease is acquired.
+            for job in claim_jobs(client, limit=3):
+                try:
+                    if job["job_type"] != "execute_workflow":
+                        raise ValueError(f"unsupported job type: {job['job_type']}")
+                    payload = job.get("payload_json") or {}
+                    graph = payload.get("graph_snapshot")
+                    if not isinstance(graph, dict):
+                        raise ValueError("queued workflow job lacks graph snapshot")
+                    trigger = next((node for node in graph.get("nodes", []) if node.get("type", "").startswith("trigger/")), None)
+                    if trigger is None:
+                        raise ValueError("queued workflow has no trigger")
+                    run_execution(job["execution_id"], graph, get_node_secrets(), seed_outputs={trigger["id"]: payload.get("input", {})})
+                    execution = client.table("executions").select("status,output_json,actual_cost_usd,error").eq("id", job["execution_id"]).single().execute().data
+                    if job.get("batch_item_id"):
+                        client.table("batch_items").update({
+                            "status": execution["status"], "output_json": execution.get("output_json"),
+                            "actual_cost_usd": execution.get("actual_cost_usd", 0), "error": execution.get("error"),
+                            "finished_at": _now() if execution["status"] in ("success", "failed", "canceled") else None,
+                        }).eq("id", job["batch_item_id"]).execute()
+                    complete_job(client, job["id"])
+                except Exception as exc:
+                    # Request validation and graph defects do not retry; normal
+                    # provider/network failures get the two queue retries.
+                    retryable = not isinstance(exc, ValueError)
+                    retry_or_fail_job(client, job, str(exc), retryable=retryable)
+                    errors.append({"job_id": job["id"], "error": str(exc)})
 
             for execution in pending_executions:
                 try:
@@ -99,7 +131,7 @@ class handler(http.server.BaseHTTPRequestHandler):
                             status_resp = httpx.get(
                                 status_url, headers=auth_header, timeout=30
                             )
-                            status_resp.raise_for_status()
+
                         except Exception as e:
                             errors.append(
                                 {
@@ -130,6 +162,14 @@ class handler(http.server.BaseHTTPRequestHandler):
 
                             result_json = response_resp.json()
 
+                            trained_lora_id = external_ref.get("trained_lora_id")
+                            if trained_lora_id:
+                                weights_url = result_json.get("diffusers_lora_file", {}).get("url") or result_json.get("lora_file", {}).get("url")
+                                try:
+                                    client.table("trained_loras").update({"status": "ready", "weights_url": weights_url, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", trained_lora_id).execute()
+                                except Exception as exc:
+                                    errors.append({"execution_id": execution["id"], "error": f"failed to update trained_loras: {exc}"})
+
                             workflow_resp = (
                                 client.table("workflows")
                                 .select("graph_json")
@@ -152,12 +192,33 @@ class handler(http.server.BaseHTTPRequestHandler):
                             # still waiting, skip
                             pass
                         else:
+                            trained_lora_id = external_ref.get("trained_lora_id")
+                            if trained_lora_id:
+                                try:
+                                    client.table("trained_loras").update({"status": "failed", "error": f"unexpected fal status: {fal_status}", "updated_at": datetime.now(timezone.utc).isoformat()}).eq("id", trained_lora_id).execute()
+                                except Exception:
+                                    pass
                             errors.append(
                                 {
                                     "execution_id": execution["id"],
                                     "error": f"unexpected fal status: {fal_status}",
                                 }
                             )
+
+                    elif provider == "openrouter":
+                        key, poll_url = os.environ.get("OPENROUTER_API_KEY", ""), external_ref.get("polling_url")
+                        if not key or not poll_url:
+                            errors.append({"execution_id": execution["id"], "error": "OpenRouter video has no polling URL or API key"}); continue
+                        response = httpx.get(poll_url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
+                        response.raise_for_status(); data = response.json(); status = data.get("status")
+                        if status == "completed":
+                            complete_openrouter_video(client, pending_log, data); resumed_count += 1
+                        elif status in ("pending", "in_progress"):
+                            pass
+                        else:
+                            error = data.get("error") or f"OpenRouter video {status or 'failed'}"
+                            client.table("execution_logs").update({"status": "failed", "error": error}).eq("id", pending_log["id"]).execute()
+                            client.table("executions").update({"status": "failed", "error": error}).eq("id", execution["id"]).execute()
 
                     else:
                         errors.append(
