@@ -20,5 +20,10 @@ class handler(http.server.BaseHTTPRequestHandler):
         path = f"pending/{secrets.token_urlsafe(24)}{suffix}"
         try:
             signed = get_client().storage.from_(_BUCKETS[kind]).create_signed_upload_url(path)
-            send_json(self, 201, {"bucket": _BUCKETS[kind], "path": path, "signed_upload": signed})
+            # supabase-py's key casing for this call has varied across versions
+            # (signed_url / signedUrl / signedURL) — normalize to one stable
+            # field so the frontend never has to guess.
+            signed_url = signed.get("signed_url") or signed.get("signedUrl") or signed.get("signedURL")
+            token = signed.get("token")
+            send_json(self, 201, {"bucket": _BUCKETS[kind], "path": path, "signed_url": signed_url, "token": token})
         except Exception as exc: send_json(self, 500, {"error": str(exc)})

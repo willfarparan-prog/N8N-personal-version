@@ -40,7 +40,7 @@
     { "src": "/api/batches/([^/]+)", "dest": "/api/v2.py?handler=batches&id=$1" },
     { "src": "/api/provider-events/(openrouter|fal)", "dest": "/api/v2.py?handler=provider_events&provider=$1" },
     { "src": "/api/brand-kits", "dest": "/api/v2.py?handler=brand_kits" },
-    { "src": "/api/brand-kits/([^/]+)/(assets|analyze|versions|profile)", "dest": "/api/v2.py?handler=brand_kits&id=$1&action=$2" },
+    { "src": "/api/brand-kits/([^/]+)/(asset|analyze|versions|profile)", "dest": "/api/v2.py?handler=brand_kits&id=$1&action=$2" },
     { "src": "/api/models/([^/]+)", "dest": "/api/v2.py?handler=models&id=$1" },
     { "src": "/api/models", "dest": "/api/v2.py?handler=models" },
     { "src": "/p/([^/]+)", "dest": "/public/p.html" },

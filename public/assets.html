@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brand Assets — FlowForge</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .assets-hero { max-width: 44rem; margin-bottom: var(--space-7); }
+  .assets-hero h1 { margin: var(--space-2) 0 var(--space-3); font-size: clamp(2.25rem, 5vw, 3.8rem); letter-spacing: -.055em; line-height: 1.03; }
+  .assets-hero p { color: var(--text-dim); font-size: var(--text-base); }
+  .card + .card { margin-top: var(--space-5); }
+  .drop-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: var(--space-4); text-align: center; cursor: pointer; background: var(--surface-2); transition: border-color 0.2s, background-color 0.2s; margin-top: var(--space-3); }
+  .drop-zone.active { border-color: var(--accent); background: var(--accent-soft); }
+  .drop-zone.disabled { opacity: 0.5; pointer-events: none; }
+  .drop-zone input[type="file"] { display: none; }
+  .color-swatch { display: inline-block; width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); margin-right: var(--space-2); vertical-align: middle; }
+  .analysis-result { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+  .analysis-section { margin-bottom: var(--space-4); }
+  .analysis-section h4 { margin-bottom: var(--space-2); font-size: var(--text-sm); color: var(--text-dim); }
+  .keyword-list { list-style: none; padding-left: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .keyword-list li { background: var(--surface-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); }
+  .field-group { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); align-items: flex-end; }
+  .field-group .field { flex: 1; }
+  .assets-list { margin-top: var(--space-3); padding: var(--space-3); background: var(--surface-2); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-sm); }
+  .upload-progress { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-dim); }
+  .card-error { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: rgba(220, 53, 69, 0.1); border: 1px solid rgba(220, 53, 69, 0.3); color: var(--danger); font-size: var(--text-sm); }
+  .card-success { margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); background: rgba(25, 135, 84, 0.1); border: 1px solid rgba(25, 135, 84, 0.3); color: var(--success); font-size: var(--text-sm); }
+  .notice { margin-bottom: var(--space-5); padding: var(--space-3); border: 1px solid rgba(255,192,105,.35); border-radius: var(--radius-sm); background: rgba(255,192,105,.09); color: #f6d49d; font-size: var(--text-sm); }
+  .notice[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="/index.html" class="btn btn-ghost btn-sm">← Workflows</a>
+    <div class="toolbar-spacer"></div>
+    <span class="badge badge-active">Personal workspace</span>
+  </div>
+  <main class="page">
+    <section class="assets-hero">
+      <div class="eyebrow">Brand assets</div>
+      <h1>Feed it your brand.</h1>
+      <p>Upload photos to power both an AI style profile and train a brand model that future image generations will render from.</p>
+    </section>
+
+    <div id="notice" class="notice" hidden role="status"></div>
+
+    <div class="card">
+      <h2>Brand Kit</h2>
+      <p>Upload photos to analyze visual style and create a Brand Kit profile.</p>
+
+      <div class="field-group">
+        <div class="field">
+          <label for="kitSelect">Select Kit</label>
+          <select id="kitSelect"></select>
+        </div>
+        <button id="newKitBtn" class="btn btn-sm btn-ghost">+ New Brand Kit</button>
+      </div>
+
+      <div id="newKitForm" style="display: none; margin-bottom: var(--space-3);">
+        <div class="field" style="display: flex; gap: var(--space-2);">
+          <input type="text" id="newKitName" placeholder="Kit name" style="flex: 1;">
+          <button id="createKitBtn" class="btn btn-sm btn-primary">Create</button>
+          <button id="cancelKitBtn" class="btn btn-sm btn-ghost">Cancel</button>
+        </div>
+      </div>
+
+      <div id="kitContent" style="display: none;">
+        <div id="kitDropZone" class="drop-zone" tabindex="0">
+          Drag photos here, or click to browse
+          <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+        </div>
+        <div id="kitUploadProgress" class="upload-progress" hidden></div>
+        <div id="kitAssetCount" style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-dim);"></div>
+        <div id="kitAssetsList" class="assets-list"></div>
+
+        <button id="analyzeBtn" class="btn btn-primary" style="margin-top: var(--space-4);" disabled>Analyze</button>
+        <div id="kitError" class="card-error" hidden></div>
+        <div id="analysisResult" class="analysis-result" hidden></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Train a brand model</h2>
+      <p>Upload 3–30 photos to train a LoRA model for consistent brand rendering.</p>
+
+      <div class="field">
+        <label for="modelName">Name</label>
+        <input type="text" id="modelName" placeholder="e.g., ApexCoach Product Photos">
+      </div>
+      <div class="field">
+        <label for="triggerWord">Trigger word (optional)</label>
+        <input type="text" id="triggerWord" placeholder="e.g., apexcoach_marcus">
+      </div>
+
+      <div id="trainDropZone" class="drop-zone" tabindex="0">
+        Drag training photos here, or click to browse
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+      </div>
+      <div id="trainUploadProgress" class="upload-progress" hidden></div>
+      <div id="photoCount" style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-dim);">0 photos ready (need at least 3)</div>
+
+      <button id="trainBtn" class="btn btn-primary" style="margin-top: var(--space-4);" disabled>Train</button>
+      <div id="trainError" class="card-error" hidden></div>
+      <div id="trainSuccess" class="card-success" hidden></div>
+    </div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    async function uploadImage(file) {
+      const sign = await apiFetch('/api/uploads/sign', { method: 'POST', body: { kind: 'brand', mime_type: file.type } });
+      if (sign.error) throw new Error(sign.error);
+      const put = await fetch(sign.signed_url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+      return { path: sign.path, mime_type: file.type };
+    }
+
+    function createDropZone(containerId, config) {
+      const container = document.getElementById(containerId);
+      const fileInput = container.querySelector('input[type="file"]');
+      const progressEl = document.getElementById(config.progressId);
+      let uploadInProgress = false;
+
+      container.addEventListener('click', () => {
+        if (!uploadInProgress) fileInput.click();
+      });
+
+      container.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && !uploadInProgress) {
+          e.preventDefault();
+          fileInput.click();
+        }
+      });
+
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (!uploadInProgress) container.classList.add('active');
+      });
+
+      container.addEventListener('dragleave', () => {
+        container.classList.remove('active');
+      });
+
+      container.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        container.classList.remove('active');
+        if (uploadInProgress) return;
+        await handleFiles(e.dataTransfer.files);
+      });
+
+      fileInput.addEventListener('change', async () => {
+        await handleFiles(fileInput.files);
+        fileInput.value = '';
+      });
+
+      async function handleFiles(fileList) {
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+        const allFiles = Array.from(fileList);
+        const files = allFiles.filter(f => allowedTypes.includes(f.type));
+        const skipped = allFiles.length - files.length;
+        if (files.length === 0) {
+          if (skipped > 0) {
+            progressEl.hidden = false;
+            progressEl.textContent = `Skipped ${skipped} unsupported file${skipped === 1 ? '' : 's'} (only PNG, JPEG, WEBP allowed).`;
+            setTimeout(() => { progressEl.hidden = true; }, 2500);
+          }
+          return;
+        }
+
+        uploadInProgress = true;
+        container.classList.add('disabled');
+        progressEl.hidden = false;
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          progressEl.textContent = `Uploading ${i + 1} of ${files.length}…`;
+          try {
+            const result = await uploadImage(file);
+            await config.onUploadSuccess(result, file);
+          } catch (err) {
+            config.onUploadError?.(err, file);
+          }
+        }
+
+        progressEl.textContent = skipped > 0
+          ? `Upload complete. Skipped ${skipped} unsupported file${skipped === 1 ? '' : 's'}.`
+          : 'Upload complete.';
+        setTimeout(() => {
+          progressEl.hidden = true;
+          container.classList.remove('disabled');
+          uploadInProgress = false;
+        }, 1200);
+      }
+    }
+
+    async function init() {
+      const kitSelect = document.getElementById('kitSelect');
+      const newKitBtn = document.getElementById('newKitBtn');
+      const newKitForm = document.getElementById('newKitForm');
+      const newKitName = document.getElementById('newKitName');
+      const createKitBtn = document.getElementById('createKitBtn');
+      const cancelKitBtn = document.getElementById('cancelKitBtn');
+      const kitContent = document.getElementById('kitContent');
+      const kitAssetCount = document.getElementById('kitAssetCount');
+      const kitAssetsList = document.getElementById('kitAssetsList');
+      const analyzeBtn = document.getElementById('analyzeBtn');
+      const kitError = document.getElementById('kitError');
+      const analysisResult = document.getElementById('analysisResult');
+      const modelName = document.getElementById('modelName');
+      const triggerWord = document.getElementById('triggerWord');
+      const photoCount = document.getElementById('photoCount');
+      const trainBtn = document.getElementById('trainBtn');
+      const trainError = document.getElementById('trainError');
+      const trainSuccess = document.getElementById('trainSuccess');
+      const notice = document.getElementById('notice');
+
+      let currentKitId = null;
+      let kitAssets = [];
+      let trainingPhotos = [];
+
+      function showPageNotice(msg) {
+        notice.textContent = escapeHtml(msg);
+        notice.hidden = false;
+      }
+
+      function showKitError(msg) {
+        kitError.textContent = escapeHtml(msg);
+        kitError.hidden = false;
+      }
+
+      function clearKitError() {
+        kitError.hidden = true;
+      }
+
+      async function loadBrandKits() {
+        const res = await apiFetch('/api/brand-kits');
+        if (res.error) {
+          showPageNotice(res.error);
+          return;
+        }
+        kitSelect.innerHTML = '';
+        if (!res.brand_kits || res.brand_kits.length === 0) {
+          kitSelect.innerHTML = '<option value="">No kits yet</option>';
+          kitContent.style.display = 'none';
+          return;
+        }
+        res.brand_kits.forEach(kit => {
+          const option = document.createElement('option');
+          option.value = kit.id;
+          option.textContent = escapeHtml(kit.name);
+          kitSelect.appendChild(option);
+        });
+        return res.brand_kits;
+      }
+
+      async function loadKitDetails(kitId) {
+        if (!kitId) return;
+        currentKitId = kitId;
+        const res = await apiFetch(`/api/brand-kits?id=${kitId}`);
+        if (res.error) {
+          showKitError(res.error);
+          return;
+        }
+        kitAssets = res.assets || [];
+        kitContent.style.display = 'block';
+        renderKitAssets();
+        clearKitError();
+        analysisResult.hidden = true;
+        analysisResult.innerHTML = '';
+      }
+
+      function renderKitAssets() {
+        kitAssetCount.textContent = `${kitAssets.length} / 10 images`;
+        kitAssetsList.innerHTML = kitAssets.length
+          ? kitAssets.map((asset, idx) => `<div>Image ${idx + 1}</div>`).join('')
+          : '<div class="empty-state">No images yet.</div>';
+        analyzeBtn.disabled = kitAssets.length === 0;
+      }
+
+      async function addAssetToKit(path, mimeType) {
+        const res = await apiFetch(`/api/brand-kits/${currentKitId}/asset`, {
+          method: 'POST',
+          body: { storage_path: path, mime_type: mimeType }
+        });
+        if (res.error) {
+          showKitError(res.error);
+          throw new Error(res.error);
+        }
+        kitAssets.push(res.asset);
+        renderKitAssets();
+      }
+
+      async function analyzeKit() {
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = 'Analyzing…';
+        clearKitError();
+        const res = await apiFetch(`/api/brand-kits/${currentKitId}/analyze`, { method: 'POST', body: {} });
+        analyzeBtn.disabled = kitAssets.length === 0;
+        analyzeBtn.textContent = 'Analyze';
+        if (res.error) {
+          showKitError(res.error);
+          return;
+        }
+        renderAnalysis(res.version.profile_json || {});
+      }
+
+      function renderAnalysis(profile) {
+        let html = '';
+        if (profile.summary) {
+          html += `<div class="analysis-section"><h4>Summary</h4><p>${escapeHtml(profile.summary)}</p></div>`;
+        }
+        if (profile.palette && profile.palette.length) {
+          html += `<div class="analysis-section"><h4>Palette</h4>`;
+          profile.palette.forEach(color => {
+            const safeColor = escapeHtml(String(color));
+            if (/^#[0-9a-f]{3,8}$/i.test(color)) {
+              html += `<span class="color-swatch" style="background-color: ${safeColor};" title="${safeColor}"></span>`;
+            } else {
+              html += `<span style="display: inline-block; margin: 0 var(--space-2) var(--space-2) 0; padding: var(--space-1) var(--space-2); background: var(--surface-2); border-radius: var(--radius-sm); font-size: var(--text-sm);">${safeColor}</span>`;
+            }
+          });
+          html += `</div>`;
+        }
+        [['style_keywords', 'Style keywords'], ['do', 'Do'], ['avoid', 'Avoid']].forEach(([key, label]) => {
+          if (profile[key] && profile[key].length) {
+            html += `<div class="analysis-section"><h4>${label}</h4><ul class="keyword-list">`;
+            profile[key].forEach(item => {
+              html += `<li>${escapeHtml(String(item))}</li>`;
+            });
+            html += `</ul></div>`;
+          }
+        });
+        [['lighting', 'Lighting'], ['composition', 'Composition'], ['materials', 'Materials'], ['camera', 'Camera'], ['typography', 'Typography']].forEach(([key, label]) => {
+          if (profile[key]) {
+            html += `<div class="analysis-section"><h4>${label}</h4><p>${escapeHtml(String(profile[key]))}</p></div>`;
+          }
+        });
+        analysisResult.innerHTML = html;
+        analysisResult.hidden = false;
+      }
+
+      function updateTrainingUI() {
+        photoCount.textContent = trainingPhotos.length < 3
+          ? `${trainingPhotos.length} photo${trainingPhotos.length === 1 ? '' : 's'} ready (need at least 3)`
+          : trainingPhotos.length > 30
+            ? `${trainingPhotos.length} photos ready (more than 30 may be ignored)`
+            : `${trainingPhotos.length} photos ready`;
+        trainBtn.disabled = !(modelName.value.trim() && trainingPhotos.length >= 3);
+      }
+
+      async function trainModel() {
+        trainBtn.disabled = true;
+        trainBtn.textContent = 'Training…';
+        trainError.hidden = true;
+        trainSuccess.hidden = true;
+        const res = await apiFetch('/api/models', {
+          method: 'POST',
+          body: {
+            name: modelName.value.trim(),
+            trigger_word: triggerWord.value.trim(),
+            image_paths: trainingPhotos.map(p => p.path)
+          }
+        });
+        trainBtn.textContent = 'Train';
+        if (res.error) {
+          trainBtn.disabled = false;
+          trainError.textContent = escapeHtml(res.error);
+          trainError.hidden = false;
+          return;
+        }
+        let successHtml = `Training started. <a class="btn btn-sm" href="/models.html">View in Brand Models →</a>`;
+        if (res.warning) {
+          successHtml += `<div style="margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-dim);">${escapeHtml(res.warning)}</div>`;
+        }
+        trainSuccess.innerHTML = successHtml;
+        trainSuccess.hidden = false;
+        trainingPhotos = [];
+        modelName.value = '';
+        triggerWord.value = '';
+        updateTrainingUI();
+      }
+
+      kitSelect.addEventListener('change', () => {
+        loadKitDetails(kitSelect.value);
+      });
+
+      newKitBtn.addEventListener('click', () => {
+        newKitForm.style.display = 'block';
+        newKitBtn.style.display = 'none';
+        newKitName.focus();
+      });
+
+      cancelKitBtn.addEventListener('click', () => {
+        newKitForm.style.display = 'none';
+        newKitBtn.style.display = 'inline-block';
+        newKitName.value = '';
+      });
+
+      createKitBtn.addEventListener('click', async () => {
+        const name = newKitName.value.trim();
+        if (!name) return;
+        createKitBtn.disabled = true;
+        const res = await apiFetch('/api/brand-kits?action=create', {
+          method: 'POST',
+          body: { name }
+        });
+        createKitBtn.disabled = false;
+        if (res.error) {
+          showKitError(res.error);
+          return;
+        }
+        newKitForm.style.display = 'none';
+        newKitBtn.style.display = 'inline-block';
+        newKitName.value = '';
+        await loadBrandKits();
+        kitSelect.value = res.brand_kit.id;
+        await loadKitDetails(res.brand_kit.id);
+      });
+
+      analyzeBtn.addEventListener('click', analyzeKit);
+
+      modelName.addEventListener('input', updateTrainingUI);
+      triggerWord.addEventListener('input', updateTrainingUI);
+
+      trainBtn.addEventListener('click', trainModel);
+
+      createDropZone('kitDropZone', {
+        progressId: 'kitUploadProgress',
+        onUploadSuccess: (result) => addAssetToKit(result.path, result.mime_type),
+        onUploadError: (err) => showKitError(`Upload failed: ${err.message}`)
+      });
+
+      createDropZone('trainDropZone', {
+        progressId: 'trainUploadProgress',
+        onUploadSuccess: (result) => {
+          trainingPhotos.push(result);
+          updateTrainingUI();
+        },
+        onUploadError: (err) => {
+          trainError.textContent = `Upload failed: ${err.message}`;
+          trainError.hidden = false;
+        }
+      });
+
+      const kits = await loadBrandKits();
+      if (kits && kits.length) {
+        kitSelect.value = kits[0].id;
+        await loadKitDetails(kits[0].id);
+      }
+      updateTrainingUI();
+    }
+
+    requireAuth().then(init).catch(() => {});
+  </script>
+</body>
+</html>
